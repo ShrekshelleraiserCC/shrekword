@@ -1,0 +1,6 @@
+*.sdoc
+conv.lua
+billboard.lua
+*.dump
+*.bimg
+test.lua
