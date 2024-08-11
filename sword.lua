@@ -159,8 +159,10 @@ end
 ---@param y integer
 ---@return integer?
 local function screenToDocumentIndex(x, y)
-    local dx, dy
     local page = math.floor((y + scrollOffset - 4) / PHEIGHT) + 1
+    if page < 1 then
+        return
+    end
     local line = y + scrollOffset - 4 - (page - 1) * PHEIGHT
     if line < 1 or line > HEIGHT then
         return
@@ -174,16 +176,6 @@ local function screenToDocumentIndex(x, y)
         lineX = document.pages[page][line].lineX
     end
     chn = x - pageX + 2 - lineX
-    -- local latestLine = line
-    -- while not document.indexlut[page][latestLine] do
-    --     if latestLine <= 1 then return end
-    --     latestLine = latestLine - 1
-    -- end
-    -- local latestChn = chn
-    -- while not document.indexlut[page][latestLine][latestChn] do
-    --     if latestChn <= 1 then return end
-    --     latestChn = latestChn - 1
-    -- end
     return document.indexlut[page][line][chn]
 end
 
@@ -192,6 +184,16 @@ local alignmentReverseLUT = {
     c = 2,
     r = 3
 }
+
+local function moveScreenToFitCursor()
+    local x, y = documentIndexToScreen(cursor)
+    if y < 3 then
+        scrollOffset = scrollOffset - (3 - y)
+    elseif y > th - 1 then
+        scrollOffset = scrollOffset + y - th + 1
+    end
+end
+
 local function moveCursor(idx)
     cursor = math.max(1, math.min(#document.editable.content[1] + 1, idx))
     local info = document.indicies[cursor]
@@ -203,6 +205,7 @@ local function moveCursor(idx)
             colorMenu.setSelected(colch)
         end
     end
+    moveScreenToFitCursor()
 end
 
 local function deleteSelection()
@@ -213,6 +216,40 @@ local function deleteSelection()
         moveCursor(a)
         a, b = nil, nil
     end
+end
+
+local function wrapCursor(npage, nline)
+    if nline < 1 then
+        npage = npage - 1
+        if npage < 1 then
+            npage = 1
+            nline = 1
+        else
+            nline = #document.pages[npage]
+        end
+    elseif nline > #document.pages[npage] then
+        npage = npage + 1
+        if npage > #document.pages then
+            npage = #document.pages
+            nline = #document.pages[npage]
+        else
+            nline = 1
+        end
+    end
+    return npage, nline
+end
+
+local function scrollCursor(dy)
+    local info = document.indicies[cursor]
+    local npage = info.page
+    local nline = info.line + dy
+    npage, nline = wrapCursor(npage, nline)
+    if document.pages[npage][nline][1] == "" then
+        nline = nline + dy
+        npage, nline = wrapCursor(npage, nline)
+    end
+    cursor = document.indexlut[npage][nline][info.col]
+    moveScreenToFitCursor()
 end
 
 local function mainLoop()
@@ -262,6 +299,10 @@ local function mainLoop()
                     -- moveCursor(cursor - 1)
                     writeToDocument("\n")
                     -- moveCursor(cursor + 1)
+                elseif e[2] == keys.up then
+                    scrollCursor(-1)
+                elseif e[2] == keys.down then
+                    scrollCursor(1)
                 end
             elseif e[1] == "char" then
                 deleteSelection()
