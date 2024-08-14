@@ -6,17 +6,78 @@ local version = "INDEV"
 local running = true
 
 local args = { ... }
-if #args < 1 then
-    print("sword <fn>")
-    return
+
+---@type number?,number?
+local a, b
+---@type number
+local cursor = 1
+---@type string
+local documentFilename
+---@type string
+local documentString
+---@type Document
+local document
+local documentUpdated = false
+local documentUpdatedSinceSnapshot = false
+local documentUpdatedSinceSave = false
+
+---Mark document for re-render
+local function documentRenderUpdate()
+    documentUpdated = true
+end
+---Mark document for re-render + unsaved changes notification
+local function documentContentUpdate()
+    documentUpdated = true
+    documentUpdatedSinceSave = true
+    documentUpdatedSinceSnapshot = true
 end
 
-
-local function load(fn)
+local function openDocument(fn)
+    if not fs.exists(fn) then
+        mbar.popup("Error", ("File '%s' does not exist."):format(fn), { "Ok" }, 15)
+        return
+    end
+    if fs.isDir(fn) then
+        mbar.popup("Error", "Directories are not documents!", { "Ok" }, 15)
+        return
+    end
     local f = assert(fs.open(fn, "r"))
     local s = f.readAll()
     f.close()
-    return s
+    local ok, err = pcall(sdoc.decode, s)
+    if ok then
+        documentString = s
+        document = err
+        documentRenderUpdate()
+        cursor = 1
+        a, b = nil, nil
+    else
+        mbar.popup("Error", err --[[@as string]], { "Ok :)", "Ok :(" }, 20)
+    end
+end
+---@return boolean continue
+local function unsavedDocumentPopup()
+    if documentUpdatedSinceSave then
+        local option = mbar.popup("Warning", "You have unsaved changes. Discard these?", { "Yes", "No" },
+            20)
+        return option == 1
+    end
+    return true
+end
+local function newDocument()
+    if not unsavedDocumentPopup() then
+        return
+    end
+    documentString = "shrekdoc-v01w25h21mR:"
+    document = sdoc.decode(documentString)
+    documentRenderUpdate()
+    cursor = 1
+end
+
+if args[1] then
+    openDocument(args[1])
+else
+    newDocument()
 end
 
 local WIDTH, HEIGHT = 25, 21
@@ -28,27 +89,41 @@ mbar.setWindow(win)
 
 local pageX = math.floor((tw - WIDTH) / 2)
 local scrollOffset = 1
-local documentString = load(args[1])
-local document = sdoc.decode(documentString)
-local a, b
-local cursor = 1
 local blit = sdoc.render(document, a, b)
-local documentUpdated = false
-local documentUpdatedSinceSnapshot = false
 ---@type {state:string,cursor:integer}[]
 local undoStates = { { state = documentString, cursor = cursor } }
 
 local writeToDocument
 
-local openButton = mbar.button("Open")
+local openButton = mbar.button("Open", function(entry)
+    if not unsavedDocumentPopup() then
+        return
+    end
+    local fn = mbar.popupRead("Open", 15, nil, function(str)
+        local list = require("cc.shell.completion").file(shell, str)
+        for i = #list, 1, -1 do
+            if not (list[i]:match("/$") or list[i]:match("%.sdoc$")) then
+                table.remove(list, i)
+            end
+        end
+        return list
+    end)
+    if fn then
+        openDocument(fn)
+    end
+end)
+local saveAsButton = mbar.button("Save As")
 local saveButton = mbar.button("Save")
-local newButton = mbar.button("New")
+local newButton = mbar.button("New", newDocument)
 local quitButton = mbar.button("Quit", function()
+    if not unsavedDocumentPopup() then
+        return
+    end
     running = false
     return true
 end)
 
-local filesm = mbar.buttonMenu({ openButton, saveButton, newButton, quitButton })
+local filesm = mbar.buttonMenu({ newButton, openButton, saveButton, saveAsButton, quitButton })
 
 local fileButton = mbar.button("File", nil, filesm)
 local charMenu = mbar.charMenu(function(self, ch)
@@ -59,7 +134,7 @@ local colorMenu = mbar.colorMenu(function(self)
     if a and b then
         documentString = document:setColor(self.selectedChar, a, b)
         document = sdoc.decode(documentString)
-        documentUpdated = true
+        documentContentUpdate()
     end
 end)
 local alignments = { "l", "c", "r" }
@@ -67,14 +142,14 @@ local alignmentMenu = mbar.radialMenu({ "Left", "Center", "Right" }, function(se
     local value = alignments[self.selected]
     documentString = document:setAlignment(cursor, value)
     document = sdoc.decode(documentString)
-    documentUpdated = true
+    documentContentUpdate()
 end)
 local colorButton = mbar.button("Color", nil, colorMenu)
 local insertMenu = mbar.buttonMenu {
     mbar.button("New Page", function(entry)
         documentString = document:insertPage(cursor)
         document = sdoc.decode(documentString)
-        documentUpdated = true
+        documentContentUpdate()
     end),
     mbar.button("Character", nil, charMenu)
 }
@@ -83,7 +158,7 @@ local undoButton = mbar.button("Undo", function(entry)
     if str then
         documentString = str.state
         document = sdoc.decode(documentString)
-        documentUpdated = true
+        documentContentUpdate()
         cursor = str.cursor
     end
 end)
@@ -94,13 +169,20 @@ local editMenu = mbar.buttonMenu {
     undoButton
 }
 local editButton = mbar.button("Edit", nil, editMenu)
-local helpButton = mbar.button("Help")
+local bar
+local helpButton = mbar.button("About", function()
+    win.setVisible(true)
+    mbar.popup("About", ("ShrekWord v%s"):format(version), { "Close" }, 20)
+    bar.resetKeys()
+    win.setVisible(false)
+end)
 
-local bar = mbar.bar({ fileButton, editButton, helpButton })
+bar = mbar.bar({ fileButton, editButton, helpButton })
 bar.shortcut(saveButton, keys.s, true)
 bar.shortcut(quitButton, keys.q, true)
 bar.shortcut(undoButton, keys.z, true)
-
+bar.shortcut(newButton, keys.n, true)
+bar.shortcut(openButton, keys.o, true)
 
 ---Writes the string s to the a, b area of the document, updating the selection as necessary
 function writeToDocument(s)
@@ -113,7 +195,7 @@ function writeToDocument(s)
     documentString = document:insertAt(cursor, s, colorMenu.selectedChar)
     cursor = cursor + #s
     document = sdoc.decode(documentString)
-    documentUpdated = true
+    documentContentUpdate()
 end
 
 ---@param idx integer
@@ -136,7 +218,6 @@ local function render()
     if documentUpdated then
         blit = sdoc.render(document, a, b)
         documentUpdated = false
-        documentUpdatedSinceSnapshot = true
     end
     win.clear()
     scrollOffset = math.max(1, scrollOffset)
@@ -215,6 +296,7 @@ local function deleteSelection()
         document = sdoc.decode(documentString)
         moveCursor(a)
         a, b = nil, nil
+        documentContentUpdate()
     end
 end
 
@@ -244,6 +326,9 @@ local function scrollCursor(dy)
     local npage = info.page
     local nline = info.line + dy
     npage, nline = wrapCursor(npage, nline)
+    if not document.pages[npage][nline] then
+        error(("%d %d"):format(npage, nline))
+    end
     if document.pages[npage][nline][1] == "" then
         nline = nline + dy
         npage, nline = wrapCursor(npage, nline)
@@ -264,12 +349,12 @@ local function mainLoop()
                 local idx = screenToDocumentIndex(e[3], e[4])
                 a, b = nil, nil
                 moveCursor(idx or cursor)
-                documentUpdated = true
+                documentRenderUpdate()
             elseif e[1] == "mouse_drag" then
                 local idx = screenToDocumentIndex(e[3], e[4])
                 a = cursor
                 b = idx or b or cursor
-                documentUpdated = true
+                documentRenderUpdate()
             elseif e[1] == "key" then
                 if e[2] == keys.backspace then
                     if not (a or b) then
@@ -282,14 +367,12 @@ local function mainLoop()
                         end
                     end
                     deleteSelection()
-                    documentUpdated = true
                 elseif e[2] == keys.delete then
                     if not (a or b) then
                         a = cursor
                         b = cursor
                     end
                     deleteSelection()
-                    documentUpdated = true
                 elseif e[2] == keys.left then
                     moveCursor(cursor - 1)
                 elseif e[2] == keys.right then
@@ -303,6 +386,10 @@ local function mainLoop()
                     scrollCursor(-1)
                 elseif e[2] == keys.down then
                     scrollCursor(1)
+                elseif e[2] == keys.pageUp then
+                    scrollCursor(-document.pageHeight)
+                elseif e[2] == keys.pageDown then
+                    scrollCursor(document.pageHeight)
                 end
             elseif e[1] == "char" then
                 deleteSelection()

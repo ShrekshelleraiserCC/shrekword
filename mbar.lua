@@ -519,24 +519,25 @@ function mbar.bar(buttons)
     function bar.shortcut(button, key, control, shift, alt)
         local shortcut = {}
         local label = {}
+        if alt then
+            shortcut[#shortcut + 1] = keys.leftAlt
+            label[#label + 1] = "alt+"
+        end
         if control then
             shortcut[#shortcut + 1] = keys.leftCtrl
-            label[#label + 1] = "ctrl"
+            label[#label + 1] = "^"
         end
         if shift then
             shortcut[#shortcut + 1] = keys.leftShift
-            label[#label + 1] = "shift"
-        end
-        if alt then
-            shortcut[#shortcut + 1] = keys.leftAlt
-            label[#label + 1] = "alt"
+            label[#label + 1] = keys.getName(key):upper()
+        else
+            label[#label + 1] = keys.getName(key)
         end
         shortcut[#shortcut + 1] = key
-        label[#label + 1] = keys.getName(key):upper()
         shortcut.button = button
-        button.label = ("%s (%s)"):format(button.label, table.concat(label, "+"))
+        button.label = ("%s (%s)"):format(button.label, table.concat(label))
         button.parent.updateSize()
-        assert(shortcuts[key] == nil, ("Attempt to register repeated shortcut (%s)"):format(table.concat(label, "+")))
+        assert(shortcuts[key] == nil, ("Attempt to register repeated shortcut (%s)"):format(table.concat(label)))
         shortcuts[key] = shortcut
         return shortcut
     end
@@ -578,6 +579,139 @@ end
 
 function mbar.setWindow(win)
     dev = win
+end
+
+local function fill(x, y, w, h)
+    local s = (" "):rep(w)
+    for i = 0, h - 1 do
+        dev.setCursorPos(x, y + i)
+        dev.write(s)
+    end
+end
+
+---Show a popup
+---@param title string
+---@param text string
+---@param options string[]
+---@param w integer?
+---@return integer
+function mbar.popup(title, text, options, w)
+    dev.setCursorBlink(false)
+    local tw, th = dev.getSize()
+    local ofg, obg = color(mfg, mbg)
+
+    local optionWidth = 0
+    for _, v in ipairs(options) do
+        optionWidth = optionWidth + #v + 3
+    end
+    w = math.max(optionWidth, w or 0)
+
+    local optionX = math.floor((tw - optionWidth) / 2)
+    local optionPos = {}
+
+    local s = require("cc.strings").wrap(text, w - 2)
+    local h = #s + 5
+    local x, y = math.floor((tw - w) / 2), math.floor((th - h) / 2)
+    local optionY = y + h - 2
+    fill(x, y, w, h)
+    for i, v in ipairs(s) do
+        dev.setCursorPos(x + 1, y + i + 1)
+        dev.write(v)
+    end
+    color(fg, bg)
+    fill(x, y, w, 1)
+    local tx = math.floor((tw - #title) / 2)
+    dev.setCursorPos(tx, y)
+    dev.write(title)
+    for i, v in ipairs(options) do
+        color(hfg, hbg)
+        dev.setCursorPos(optionX, optionY)
+        dev.write(" " .. v .. " ")
+        color(bg, fg)
+        corner(optionX, optionY, #v + 2, 1)
+        optionPos[i] = optionX
+        optionX = optionX + #v + 3
+    end
+    color(bg, obg)
+    corner(x, y, w, h)
+    color(ofg, obg)
+    while true do
+        local _, _, x, y = os.pullEvent("mouse_click")
+        if y == optionY and x < optionX then
+            for i = #options, 1, -1 do
+                if x >= optionPos[i] then
+                    return i
+                end
+            end
+        end
+    end
+end
+
+---@param title string
+---@param w integer
+---@param text string?
+---@param completion function?
+---@return string?
+function mbar.popupRead(title, w, text, completion)
+    dev.setCursorBlink(false)
+    local tw, th = dev.getSize()
+    local ofg, obg = color(mfg, mbg)
+    local h = 6
+    local x, y
+    if text then
+        local s = require("cc.strings").wrap(text, w - 2)
+        h = #s + 7
+        x, y = math.floor((tw - w) / 2), math.floor((th - h) / 2)
+        fill(x, y, w, h)
+        for i, v in ipairs(s) do
+            dev.setCursorPos(x + 1, y + i + 1)
+            dev.write(v)
+        end
+    else
+        x, y = math.floor((tw - w) / 2), math.floor((th - h) / 2)
+        fill(x, y, w, h)
+    end
+
+    color(fg, bg)
+    fill(x, y, w, 1)
+    local tx = math.floor((tw - #title) / 2)
+    dev.setCursorPos(tx, y)
+    dev.write(title)
+    color(bg, obg)
+    corner(x, y, w, h)
+    local readY = y + h - 4
+    local readWindow = window.create(dev, x + 1, readY, w - 2, 1)
+    readWindow.setTextColor(hfg)
+    readWindow.setBackgroundColor(hbg)
+    readWindow.clear()
+    readWindow.setCursorPos(1, 1)
+
+    local cancelX = x + 1
+    local cancelY = y + h - 2
+    local cancelW = 8
+    color(hfg, hbg)
+    dev.setCursorPos(cancelX, cancelY)
+    dev.write(" Cancel ")
+    color(bg, fg)
+    corner(cancelX, cancelY, cancelW, 1)
+
+    local oldWin = term.redirect(readWindow)
+
+    local value
+    parallel.waitForAny(function()
+        value = read(nil, nil, completion)
+    end, function()
+        while true do
+            local _, _, x, y = os.pullEvent("mouse_click")
+            if x >= cancelX and x < cancelX + cancelW and y == cancelY then
+                return
+            end
+        end
+    end)
+
+    term.redirect(oldWin)
+    color(ofg, obg)
+    return value
 end
 
 return mbar

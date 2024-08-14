@@ -378,6 +378,7 @@ function sdoc.decode(str)
             end
         end
     end
+    doc.pages[1][1] = doc.pages[1][1] or { "", "" }
 
     local fgstring = {}
     local bgstring = {}
