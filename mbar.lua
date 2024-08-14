@@ -119,7 +119,7 @@ function mbar.button(label, callback, submenu)
 end
 
 ---@param label string
----@param callback menuCallback?
+---@param callback fun(entry:ToggleButton)?
 ---@return ToggleButton
 function mbar.toggleButton(label, callback)
     ---@class ToggleButton
@@ -136,11 +136,11 @@ function mbar.toggleButton(label, callback)
     button.setValue(false)
 
     function button.click()
+        button.setValue(not button.value)
         if button.callback then
             button.callback(button)
         end
         state[button.depth] = nil
-        button.setValue(not button.value)
     end
 
     return button

@@ -305,8 +305,6 @@ function sdoc.decode(str)
         lineColor, lineText = {}, {}
         ln = ln + 1
         chn = 1
-        doc.indexlut[page] = doc.indexlut[page] or {}
-        doc.indexlut[page][ln] = doc.indexlut[page][ln] or {}
     end
 
     ---@param code string[]
@@ -323,8 +321,8 @@ function sdoc.decode(str)
                 page = page + 1
                 ln = 1
                 doc.editable.pages[idx] = (doc.editable.pages[idx] or 0) + 1
-                doc.indexlut[page] = doc.indexlut[page] or {}
-                doc.indexlut[page][ln] = doc.indexlut[page][ln] or {}
+                -- doc.indexlut[page] = doc.indexlut[page] or {}
+                -- doc.indexlut[page][ln] = doc.indexlut[page][ln] or {}
             else
                 error(("Invalid escape code %s"):format(s))
             end
@@ -337,14 +335,14 @@ function sdoc.decode(str)
             doc.editable.pages[idx] = (doc.editable.pages[idx] or 0) + 1
             ln = 1
         end
-        doc.indexlut[page] = doc.indexlut[page] or {}
-        doc.indexlut[page][ln] = doc.indexlut[page][ln] or {}
         for x = 1, #line do
             local ch = line:sub(x, x)
             if m[idx] then
                 parseEscapeCode(m[idx], i)
             end
             doc.indicies[idx] = { line = ln, col = chn, page = page }
+            doc.indexlut[page] = doc.indexlut[page] or {}
+            doc.indexlut[page][ln] = doc.indexlut[page][ln] or {}
             doc.indexlut[page][ln][chn] = idx
             lineColor[chn] = color
             lineText[chn] = ch
@@ -360,11 +358,12 @@ function sdoc.decode(str)
     -- fill out the rest of the indexlut
     local lastSeenIdx = 1
     local lastPage = page
-    local lastLine = ln
-    local lastCol = chn
+
     for page = 1, lastPage do
         doc.indexlut[page] = doc.indexlut[page] or {}
+        local pageHeight = #doc.indexlut[page]
         for line = 1, doc.pageHeight do
+            local lineLength = #(doc.indexlut[page][line] or {})
             doc.indexlut[page][line] = doc.indexlut[page][line] or {}
             for chn = 1, doc.pageWidth do
                 if doc.indexlut[page][line][chn] then
@@ -372,13 +371,13 @@ function sdoc.decode(str)
                 else
                     doc.indexlut[page][line][chn] = lastSeenIdx
                 end
-                if page == lastPage and line == lastLine and chn == lastCol then
+                if page == lastPage and line == pageHeight and chn == lineLength then
                     lastSeenIdx = lastSeenIdx + 1
                 end
             end
         end
     end
-    doc.pages[1][1] = doc.pages[1][1] or { "", "" }
+    doc.pages[1][1] = doc.pages[1][1] or { "", "", alignment = "l", lineX = 1 }
 
     local fgstring = {}
     local bgstring = {}
@@ -415,13 +414,17 @@ function sdoc.encode(doc)
     return encode(doc.editable)
 end
 
-local hlc = "8"
+local highlightColor = "8"
+local newpageColor = "1"
 
 ---@param doc Document
 ---@param a integer?
 ---@param b integer?
+---@param renderNewlines boolean?
+---@param renderNewpages boolean?
+---@param renderControl boolean?
 ---@return BLIT[]
-function sdoc.render(doc, a, b)
+function sdoc.render(doc, a, b, renderNewlines, renderNewpages, renderControl)
     b = b or a
     if a and b then
         a, b = math.min(a, b), math.max(a, b)
@@ -445,7 +448,11 @@ function sdoc.render(doc, a, b)
                 else
                     lineEndsInHighlight = false
                 end
-                line[3] = line[3] .. (lineEndsInHighlight and hlc or "0")
+                if renderNewpages and (doc.editable.pages[idx] or 0) > 0 then
+                    line[3] = line[3] .. newpageColor
+                else
+                    line[3] = line[3] .. (lineEndsInHighlight and highlightColor or "0")
+                end
             end
             local alignment = line.alignment
             if alignment == "c" then
@@ -465,9 +472,12 @@ function sdoc.render(doc, a, b)
             end
             pblit[y] = {}
             pblit[y][1] = (" "):rep(sx - 1) .. line[1] .. (" "):rep(doc.pageWidth - sx + 1 - #line[1])
+            if renderNewlines then
+                pblit[y][1] = pblit[y][1]:gsub("\n", "\182")
+            end
             pblit[y][2] = (colorStart):rep(sx - 1) .. line[2] .. (colorEnd):rep(doc.pageWidth - sx + 1 - #line[2])
-            local sbg = (lineStartsInHighlight and hlc or "0")
-            local ebg = (lineEndsInHighlight and hlc or "0")
+            local sbg = (lineStartsInHighlight and highlightColor or "0")
+            local ebg = (lineEndsInHighlight and highlightColor or "0")
             pblit[y][3] = sbg:rep(sx - 1) .. line[3] .. ebg:rep(doc.pageWidth - sx + 1 - #line[3])
             y = y + 1
             lineStartsInHighlight = lineEndsInHighlight

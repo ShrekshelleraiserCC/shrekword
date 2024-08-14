@@ -11,23 +11,45 @@ local args = { ... }
 local a, b
 ---@type number
 local cursor = 1
----@type string
+---@type string?
 local documentFilename
 ---@type string
 local documentString
 ---@type Document
 local document
-local documentUpdated = false
+local documentUpdateRender = false
 local documentUpdatedSinceSnapshot = false
 local documentUpdatedSinceSave = false
 
+local WIDTH, HEIGHT
+local PHEIGHT
+local pageX
+
+local tw, th = term.getSize()
+local win = window.create(term.current(), 1, 1, tw, th)
+mbar.setWindow(win)
+
+local function updateDocumentSize(w, h)
+    WIDTH, HEIGHT = w, h
+    PHEIGHT = HEIGHT + 2
+    pageX = math.floor((tw - WIDTH) / 2)
+end
+updateDocumentSize(25, 21)
+
+local function updateTermSize()
+    tw, th = term.getSize()
+    win.reposition(1, 1, tw, th)
+    updateDocumentSize(WIDTH, HEIGHT)
+end
+
+
 ---Mark document for re-render
 local function documentRenderUpdate()
-    documentUpdated = true
+    documentUpdateRender = true
 end
 ---Mark document for re-render + unsaved changes notification
 local function documentContentUpdate()
-    documentUpdated = true
+    documentUpdateRender = true
     documentUpdatedSinceSave = true
     documentUpdatedSinceSnapshot = true
 end
@@ -35,11 +57,11 @@ end
 local function openDocument(fn)
     if not fs.exists(fn) then
         mbar.popup("Error", ("File '%s' does not exist."):format(fn), { "Ok" }, 15)
-        return
+        return false
     end
     if fs.isDir(fn) then
         mbar.popup("Error", "Directories are not documents!", { "Ok" }, 15)
-        return
+        return false
     end
     local f = assert(fs.open(fn, "r"))
     local s = f.readAll()
@@ -48,12 +70,15 @@ local function openDocument(fn)
     if ok then
         documentString = s
         document = err
+        documentFilename = fn
         documentRenderUpdate()
         cursor = 1
         a, b = nil, nil
-    else
-        mbar.popup("Error", err --[[@as string]], { "Ok :)", "Ok :(" }, 20)
+        updateDocumentSize(document.pageWidth, document.pageHeight)
+        return true
     end
+    mbar.popup("Error", err --[[@as string]], { "Ok :)", "Ok :(" }, 20)
+    return false
 end
 ---@return boolean continue
 local function unsavedDocumentPopup()
@@ -72,22 +97,17 @@ local function newDocument()
     document = sdoc.decode(documentString)
     documentRenderUpdate()
     cursor = 1
+    documentFilename = nil
 end
 
 if args[1] then
-    openDocument(args[1])
+    if not openDocument(args[1]) then
+        newDocument()
+    end
 else
     newDocument()
 end
 
-local WIDTH, HEIGHT = 25, 21
-local PHEIGHT = HEIGHT + 2
-
-local tw, th = term.getSize()
-local win = window.create(term.current(), 1, 1, tw, th)
-mbar.setWindow(win)
-
-local pageX = math.floor((tw - WIDTH) / 2)
 local scrollOffset = 1
 local blit = sdoc.render(document, a, b)
 ---@type {state:string,cursor:integer}[]
@@ -112,8 +132,26 @@ local openButton = mbar.button("Open", function(entry)
         openDocument(fn)
     end
 end)
-local saveAsButton = mbar.button("Save As")
-local saveButton = mbar.button("Save")
+local function saveAs(fn)
+    local f = assert(fs.open(fn, "w"))
+    f.write(documentString)
+    f.close()
+    documentUpdatedSinceSave = false
+end
+local saveAsButton = mbar.button("Save As", function(entry)
+    local fn = mbar.popupRead("Save As", 15)
+    if fn then
+        saveAs(fn)
+        documentFilename = fn
+    end
+end)
+local saveButton = mbar.button("Save", function(entry)
+    if not documentFilename then
+        saveAsButton.click()
+    else
+        saveAs(documentFilename)
+    end
+end)
 local newButton = mbar.button("New", newDocument)
 local quitButton = mbar.button("Quit", function()
     if not unsavedDocumentPopup() then
@@ -129,6 +167,9 @@ local fileButton = mbar.button("File", nil, filesm)
 local charMenu = mbar.charMenu(function(self, ch)
     writeToDocument(ch)
 end)
+
+-- EDIT MENU
+
 local colorMenu = mbar.colorMenu(function(self)
     charMenu.color = self.selectedCol
     if a and b then
@@ -169,6 +210,21 @@ local editMenu = mbar.buttonMenu {
     undoButton
 }
 local editButton = mbar.button("Edit", nil, editMenu)
+
+-- VIEW MENU
+
+local renderNewlines = false
+local renderNewlineButton = mbar.toggleButton("New Lines", function(entry)
+    renderNewlines = entry.value
+    documentRenderUpdate()
+end)
+local renderNewpages = false
+local renderNewpageButton = mbar.toggleButton("New Pages", function(entry)
+    renderNewpages = entry.value
+    documentRenderUpdate()
+end)
+local viewMenu = mbar.buttonMenu({ renderNewlineButton, renderNewpageButton })
+local viewButton = mbar.button("View", nil, viewMenu)
 local bar
 local helpButton = mbar.button("About", function()
     win.setVisible(true)
@@ -177,7 +233,7 @@ local helpButton = mbar.button("About", function()
     win.setVisible(false)
 end)
 
-bar = mbar.bar({ fileButton, editButton, helpButton })
+bar = mbar.bar({ fileButton, editButton, viewButton, helpButton })
 bar.shortcut(saveButton, keys.s, true)
 bar.shortcut(quitButton, keys.q, true)
 bar.shortcut(undoButton, keys.z, true)
@@ -209,20 +265,25 @@ local function documentIndexToScreen(idx)
     if document.pages[info.page][info.line] then
         lineX = document.pages[info.page][info.line].lineX
     end
+    assert(lineX, ("%d, %d, %d"):format(idx, info.page, info.line))
     local x = info.col + pageX + lineX - 2
     return x, y
 end
 
 local function render()
     win.setVisible(false)
-    if documentUpdated then
-        blit = sdoc.render(document, a, b)
-        documentUpdated = false
+    if documentUpdateRender then
+        blit = sdoc.render(document, a, b, renderNewlines, renderNewpages)
+        documentUpdateRender = false
     end
     win.clear()
     scrollOffset = math.max(1, scrollOffset)
     local maxScroll = #document.pages * PHEIGHT - th + 4
-    scrollOffset = math.min(maxScroll, scrollOffset)
+    if #document.pages * PHEIGHT > th then
+        scrollOffset = math.min(maxScroll, scrollOffset)
+    else
+        scrollOffset = 1
+    end
     local startPage = math.max(1, math.floor((scrollOffset - 2) / PHEIGHT) + 1)
     local endPage = math.min(startPage + math.ceil(th / PHEIGHT), #document.pages)
     for i = startPage, endPage do
@@ -321,20 +382,84 @@ local function wrapCursor(npage, nline)
     return npage, nline
 end
 
-local function scrollCursor(dy)
+---@param dlines number?
+---@param dpages number?
+local function scrollCursor(dlines, dpages)
+    dpages = dpages or 0
+    dlines = dlines or 0
     local info = document.indicies[cursor]
-    local npage = info.page
-    local nline = info.line + dy
+    local npage = info.page + dpages
+    local nline = info.line + dlines
     npage, nline = wrapCursor(npage, nline)
     if not document.pages[npage][nline] then
         error(("%d %d"):format(npage, nline))
     end
     if document.pages[npage][nline][1] == "" then
-        nline = nline + dy
+        nline = nline + dlines
         npage, nline = wrapCursor(npage, nline)
     end
     cursor = document.indexlut[npage][nline][info.col]
     moveScreenToFitCursor()
+end
+
+local function onEvent(e)
+    -- event not consumed, do something with it
+    if e[1] == "mouse_scroll" then
+        scrollOffset = scrollOffset + e[2]
+    elseif e[1] == "mouse_click" then
+        local idx = screenToDocumentIndex(e[3], e[4])
+        a, b = nil, nil
+        moveCursor(idx or cursor)
+        documentRenderUpdate()
+    elseif e[1] == "mouse_drag" then
+        local idx = screenToDocumentIndex(e[3], e[4])
+        a = cursor
+        b = idx or b or cursor
+        documentRenderUpdate()
+    elseif e[1] == "key" then
+        if e[2] == keys.backspace then
+            if not (a or b) then
+                cursor = cursor - 1
+                if cursor < 1 then
+                    cursor = 1
+                else
+                    a = cursor
+                    b = cursor
+                end
+            end
+            deleteSelection()
+        elseif e[2] == keys.delete then
+            if not (a or b) then
+                a = cursor
+                b = cursor
+            end
+            deleteSelection()
+        elseif e[2] == keys.left then
+            moveCursor(cursor - 1)
+        elseif e[2] == keys.right then
+            moveCursor(cursor + 1)
+        elseif e[2] == keys.enter then
+            deleteSelection()
+            -- moveCursor(cursor - 1)
+            writeToDocument("\n")
+            -- moveCursor(cursor + 1)
+        elseif e[2] == keys.up then
+            scrollCursor(-1)
+        elseif e[2] == keys.down then
+            scrollCursor(1)
+        elseif e[2] == keys.pageUp then
+            scrollCursor(-document.pageHeight)
+        elseif e[2] == keys.pageDown then
+            scrollCursor(document.pageHeight)
+        end
+    elseif e[1] == "char" then
+        deleteSelection()
+        -- moveCursor(cursor - 1)
+        writeToDocument(e[2])
+        -- moveCursor(cursor + 1)
+    elseif e[1] == "term_resize" then
+        updateTermSize()
+    end
 end
 
 local function mainLoop()
@@ -342,61 +467,7 @@ local function mainLoop()
         render()
         local e = { os.pullEvent() }
         if not bar.onEvent(e) then
-            -- event not consumed, do something with it
-            if e[1] == "mouse_scroll" then
-                scrollOffset = scrollOffset + e[2]
-            elseif e[1] == "mouse_click" then
-                local idx = screenToDocumentIndex(e[3], e[4])
-                a, b = nil, nil
-                moveCursor(idx or cursor)
-                documentRenderUpdate()
-            elseif e[1] == "mouse_drag" then
-                local idx = screenToDocumentIndex(e[3], e[4])
-                a = cursor
-                b = idx or b or cursor
-                documentRenderUpdate()
-            elseif e[1] == "key" then
-                if e[2] == keys.backspace then
-                    if not (a or b) then
-                        cursor = cursor - 1
-                        if cursor < 1 then
-                            cursor = 1
-                        else
-                            a = cursor
-                            b = cursor
-                        end
-                    end
-                    deleteSelection()
-                elseif e[2] == keys.delete then
-                    if not (a or b) then
-                        a = cursor
-                        b = cursor
-                    end
-                    deleteSelection()
-                elseif e[2] == keys.left then
-                    moveCursor(cursor - 1)
-                elseif e[2] == keys.right then
-                    moveCursor(cursor + 1)
-                elseif e[2] == keys.enter then
-                    deleteSelection()
-                    -- moveCursor(cursor - 1)
-                    writeToDocument("\n")
-                    -- moveCursor(cursor + 1)
-                elseif e[2] == keys.up then
-                    scrollCursor(-1)
-                elseif e[2] == keys.down then
-                    scrollCursor(1)
-                elseif e[2] == keys.pageUp then
-                    scrollCursor(-document.pageHeight)
-                elseif e[2] == keys.pageDown then
-                    scrollCursor(document.pageHeight)
-                end
-            elseif e[1] == "char" then
-                deleteSelection()
-                -- moveCursor(cursor - 1)
-                writeToDocument(e[2])
-                -- moveCursor(cursor + 1)
-            end
+            onEvent(e)
         end
     end
 end
