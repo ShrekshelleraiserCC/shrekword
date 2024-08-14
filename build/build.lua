@@ -29,6 +29,8 @@ local matchReturnStr = "^return ([%a_%d]+)"
 ---@field content string
 ---@field firstline string
 ---@field requires table<string,string> module,module
+---@field temporary boolean?
+---@field permanant boolean?
 
 ---@type RequiredFile[]
 local requiredFiles = {}
