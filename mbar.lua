@@ -41,12 +41,16 @@ local mbar = {}
 ---@class ToggleButton:Button
 ---@field value boolean
 
+---@class Divider:Button
+---@field divider true
+
 ---@class ButtonMenu:Menu
 ---@field buttons Button[]
 
 ---@class Bar
 ---@field buttons Button[]
 ---@field buttonEnds integer[] x-pos of last character of each button
+---@field bar true
 
 ---@type Window
 local dev
@@ -69,20 +73,140 @@ local function color(fg, bg)
     return ofg, obg
 end
 
+local function getLine(y)
+    return dev.getLine(y)
+end
+
 local function corner(x, y, w, h)
-    dev.setCursorPos(x, y + h)
-    local _, _, bgline = dev.getLine(y + h)
     local cfg = dev.getTextColor()
     local cblit = colors.toBlit(cfg)
 
-    dev.blit(("\131"):rep(w), cblit:rep(w), bgline:sub(x, x + w - 1))
-    dev.setCursorPos(x + w, y + h)
-    dev.blit("\129", cblit, bgline:sub(x + w - 1, x + w - 1))
-    for i = 1, h do
-        _, _, bgline = dev.getLine(y + i - 1)
-        dev.setCursorPos(x + w, y + i - 1)
-        dev.blit("\149", cblit, bgline:sub(x + w, x + w))
+    local tw, th = dev.getSize()
+    if y + h - 1 <= th then
+        local _, _, bgline = getLine(y + h)
+        local sw = math.min(w, tw - x + 1)
+        dev.setCursorPos(x, y + h)
+        dev.blit(("\131"):rep(sw), cblit:rep(sw), bgline:sub(x, x + sw - 1))
+        if x + w <= tw then
+            dev.setCursorPos(x + w, y + h)
+            dev.blit("\129", cblit, bgline:sub(x + w, x + w))
+        end
     end
+    if x + w <= tw then
+        for i = 1, h do
+            local _, _, bgline = getLine(y + i - 1)
+            dev.setCursorPos(x + w, y + i - 1)
+            dev.blit("\149", cblit, bgline:sub(x + w, x + w))
+        end
+    end
+end
+
+function mbar.box(x, y, w, h)
+    local cfg = dev.getTextColor()
+    local cblit = colors.toBlit(cfg)
+    corner(x, y, w, h)
+    local tw, th = dev.getSize()
+    dev.setCursorPos(x - 1, y - 1)
+    local _, _, bgline = getLine(y - 1)
+    dev.blit("\159", bgline:sub(x - 1, x - 1), cblit)
+    dev.setCursorPos(x, y - 1)
+    dev.blit(("\143"):rep(w), bgline:sub(x, x + w - 1), cblit:rep(w))
+
+    for dy = 1, h do
+        _, _, bgline = getLine(y + dy - 1)
+        dev.setCursorPos(x - 1, y + dy - 1)
+        dev.blit("\149", bgline:sub(x - 1, x - 1), cblit)
+    end
+end
+
+---@param menu Menu
+local function intelligentCorner(menu)
+    local parent = menu.parent.parent
+    if not parent.bar and (menu.x ~= parent.x + parent.width) then
+        -- the menu was moved, this won't work anymore
+        mbar.box(menu.x, menu.y, menu.width, menu.height)
+        return
+    end
+    local ofg, obg = color()
+    local cblit = colors.toBlit(ofg)
+    -- corner is free
+    corner(menu.x, menu.y, menu.width, menu.height)
+    -- check if we should draw above the menu
+    local _, fgline, bgline = getLine(menu.y - 1)
+    local tw, th = dev.getSize()
+    if menu.y > 2 then
+        local sx = 1
+        if menu.y > menu.parent.parent.y then
+            sx = 2
+            dev.setCursorPos(menu.x, menu.y - 1)
+            dev.blit("\138", bgline:sub(menu.x, menu.x), cblit)
+        end
+        for dx = sx, menu.width do
+            local x = menu.x + dx - 1
+            dev.setCursorPos(x, menu.y - 1)
+            dev.blit("\143", bgline:sub(x, x), cblit)
+        end
+        local x = menu.x + menu.width
+        dev.blit("\144", cblit, bgline:sub(x, x))
+    end
+    if not menu.parent.parent.bar and menu.y < menu.parent.parent.y then
+        local y = menu.parent.parent.y - 1
+        local x = menu.x - 1
+        _, _, bgline = getLine(y)
+        dev.setCursorPos(x, y)
+        dev.blit("\133", fgline:sub(x, x), cblit)
+        if menu.y > 2 then
+            y = menu.y - 1
+            _, _, bgline = getLine(y)
+            dev.setCursorPos(x, y)
+            dev.blit("\159", bgline:sub(x, x), cblit)
+        end
+        local ly = menu.parent.parent.y - menu.y
+        for dy = 1, ly do
+            y = menu.y + dy - 1
+            _, _, bgline = getLine(y)
+            dev.setCursorPos(x, y)
+            dev.blit("\149", bgline:sub(x, x), cblit)
+        end
+    end
+    if menu.x > 1 then
+        local sy = 1
+        if not menu.parent.parent.bar then
+            sy = menu.height - ((menu.y + menu.height) - (menu.parent.parent.y + menu.parent.parent.height)) + 2
+        end
+        for dy = sy, menu.height do
+            local y = menu.y + dy - 1
+            if y > th then
+                break
+            end
+            _, _, bgline = getLine(y)
+            local x = menu.x - 1
+            dev.setCursorPos(x, y)
+            dev.blit("\149", bgline:sub(x, x), cblit)
+        end
+        if sy < menu.height then
+            local y = menu.y + sy - 2
+            local x = menu.x - 1
+            _, _, bgline = getLine(y)
+            if not menu.parent.parent.bar then
+                dev.setCursorPos(x, y)
+                dev.blit("\148", bgline:sub(x, x), cblit)
+            end
+            y = menu.y + menu.height
+            if y <= th then
+                _, _, bgline = getLine(y)
+                dev.setCursorPos(x, y)
+                dev.blit("\130", cblit, bgline:sub(x, x))
+            end
+        elseif not menu.parent.parent.bar and menu.y + menu.height < menu.parent.parent.y + menu.parent.parent.height then
+            local x = menu.x
+            local y = menu.y + menu.height
+            _, _, bgline = getLine(y)
+            dev.setCursorPos(x, y)
+            dev.blit("\151", cblit, bgline:sub(x, x))
+        end
+    end
+    color(ofg, obg)
 end
 
 ---@param label string
@@ -146,6 +270,17 @@ function mbar.toggleButton(label, callback)
     return button
 end
 
+---@return Divider
+function mbar.divider()
+    local divider = mbar.button("") --[[@as Divider]]
+    divider.divider = true
+
+    function divider.click()
+    end
+
+    return divider
+end
+
 function mbar.absMenu()
     local menu = {
         x = 1,
@@ -203,7 +338,7 @@ function mbar.charMenu(callback)
             dev.blit(str, colors.toBlit(menu.color):rep(#str), ("0"):rep(#str))
         end
         color(bg, obg)
-        corner(menu.x, menu.y, menu.width, menu.height)
+        intelligentCorner(menu)
         color(ofg, obg)
     end
 
@@ -275,7 +410,7 @@ function mbar.colorMenu(callback)
             end
         end
         color(menu.selectedCol, obg)
-        corner(menu.x, menu.y, menu.height, menu.width)
+        intelligentCorner(menu)
         color(ofg, obg)
     end
 
@@ -320,7 +455,7 @@ function mbar.radialMenu(options, callback)
             dev.write(s:format(i == menu.selected and "\7" or "\186", v))
         end
         color(bg, obg)
-        corner(menu.x, menu.y, menu.width, menu.height)
+        intelligentCorner(menu)
         color(ofg, obg)
     end
 
@@ -374,11 +509,16 @@ function mbar.buttonMenu(buttons)
                 color(mfg, mbg)
             end
             dev.setCursorPos(menu.x, menu.y + i - 1)
-            dev.write(s:format(v.label, v.submenu and ">" or " "))
+            ---@diagnostic disable-next-line: undefined-field
+            if not v.divider then
+                dev.write(s:format(v.label, v.submenu and ">" or " "))
+            else
+                dev.write(("-"):rep(menu.width))
+            end
         end
         local selected = menu.buttons[state[depth]]
         color(bg, obg)
-        corner(menu.x, menu.y, menu.width, menu.height)
+        intelligentCorner(menu)
         color(ofg, obg)
         if selected and selected.submenu then
             selected.submenu.render(depth + 1)
@@ -422,7 +562,8 @@ function mbar.bar(buttons)
     ---@class Bar
     local bar = {
         buttons = buttons,
-        buttonEnds = {}
+        buttonEnds = {},
+        bar = true
     }
     local x = 1
     for i, v in ipairs(bar.buttons) do
@@ -438,6 +579,7 @@ function mbar.bar(buttons)
     end
 
     function bar.render()
+        local tw, th = dev.getSize()
         dev.setCursorPos(1, 1)
         local ofg, obg = color(fg, bg)
         dev.clearLine()

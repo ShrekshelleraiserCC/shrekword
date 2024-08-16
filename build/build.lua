@@ -11,16 +11,61 @@
 --- For example, `return data`
 -- 3) EVERYWHERE a file is imported it MUST be imported using the same module name AND variable name.
 
-if #arg < 2 then
-    print("Usage: build input output")
+local args = { ... }
+
+local allowed_args = {
+    mini = { type = "flag", description = "Remove whitespace + comments" },
+}
+
+-- the arguments without - before them
+local var_args = {}
+
+-- the recognized arguments passed into the program
+local given_args = {}
+for i = 1, #args do
+    local v = args[i]
+    if string.sub(v, 1, 1) == "-" then
+        local full_arg_str = string.sub(v, 2)
+        for arg_name, arg_info in pairs(allowed_args) do
+            if string.sub(full_arg_str, 1, arg_name:len()) == arg_name then
+                -- this is an argument that is allowed
+                if arg_info.type == "value" then
+                    local arg_arg_str = string.sub(full_arg_str, arg_name:len() + 1)
+                    assert(arg_arg_str:sub(1, 1) == "=" and arg_arg_str:len() > 1, "Expected =<value> on arg " ..
+                        arg_name)
+                    given_args[arg_name] = arg_arg_str:sub(2)
+                elseif arg_info.type == "flag" then
+                    given_args[arg_name] = true
+                    break
+                end
+            end
+        end
+    else
+        table.insert(var_args, v)
+    end
+end
+if given_args.help or #var_args < 2 then
+    print("build <input> <output>")
+    for k, v in pairs(allowed_args) do
+        local arg_label = k
+        if v.type == "value" then
+            arg_label = arg_label .. "=?"
+        end
+        print(("%-10s|%s"):format(arg_label, v.description))
+    end
     return
 end
 
-local inputfn = arg[1]
-local outputfn = arg[2]
+local inputfn = var_args[1]
+local outputfn = var_args[2]
+
+local minifyish = given_args.mini
 
 local matchRequireStr = "local ([%a_%d]+) *= *require%(? *['\"]([%a%d%p]+)['\"]%)?"
 local matchReturnStr = "^return ([%a_%d]+)"
+local matchCommentStr = "%-%-.-$"
+local matchInlineCommentStr = "%-%-%[%[.-%]%]"
+local matchWhitespaceStr = "^ +"
 
 ---@class RequiredFile
 ---@field variable string
@@ -106,7 +151,13 @@ local function processFile(fn, processFirst)
         if var and module and not universalModules[module] then
             requireFile(fn, var, module)
         elseif not s:match(matchReturnStr) then
-            output = output .. s
+            if minifyish then
+                output = output .. s:gsub(matchWhitespaceStr, "")
+                    :gsub(matchInlineCommentStr, "")
+                    :gsub(matchCommentStr, "")
+            else
+                output = output .. s
+            end
         end
         s = f.readLine(true)
     end

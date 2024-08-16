@@ -20,6 +20,7 @@ local document
 local documentUpdateRender = false
 local documentUpdatedSinceSnapshot = false
 local documentUpdatedSinceSave = false
+local bar
 
 local WIDTH, HEIGHT
 local PHEIGHT
@@ -32,7 +33,7 @@ mbar.setWindow(win)
 local function updateDocumentSize(w, h)
     WIDTH, HEIGHT = w, h
     PHEIGHT = HEIGHT + 2
-    pageX = math.floor((tw - WIDTH) / 2)
+    pageX = math.max(1, math.floor((tw - WIDTH) / 2))
 end
 updateDocumentSize(25, 21)
 
@@ -57,10 +58,12 @@ end
 local function openDocument(fn)
     if not fs.exists(fn) then
         mbar.popup("Error", ("File '%s' does not exist."):format(fn), { "Ok" }, 15)
+        bar.resetKeys()
         return false
     end
     if fs.isDir(fn) then
         mbar.popup("Error", "Directories are not documents!", { "Ok" }, 15)
+        bar.resetKeys()
         return false
     end
     local f = assert(fs.open(fn, "r"))
@@ -71,13 +74,14 @@ local function openDocument(fn)
         documentString = s
         document = err
         documentFilename = fn
+        updateDocumentSize(document.pageWidth, document.pageHeight)
         documentRenderUpdate()
         cursor = 1
         a, b = nil, nil
-        updateDocumentSize(document.pageWidth, document.pageHeight)
         return true
     end
     mbar.popup("Error", err --[[@as string]], { "Ok :)", "Ok :(" }, 20)
+    bar.resetKeys()
     return false
 end
 ---@return boolean continue
@@ -85,6 +89,7 @@ local function unsavedDocumentPopup()
     if documentUpdatedSinceSave then
         local option = mbar.popup("Warning", "You have unsaved changes. Discard these?", { "Yes", "No" },
             20)
+        bar.resetKeys()
         return option == 1
     end
     return true
@@ -95,6 +100,7 @@ local function newDocument()
     end
     documentString = "shrekdoc-v01w25h21mR:"
     document = sdoc.decode(documentString)
+    updateDocumentSize(document.pageWidth, document.pageHeight)
     documentRenderUpdate()
     cursor = 1
     documentFilename = nil
@@ -128,18 +134,23 @@ local openButton = mbar.button("Open", function(entry)
         end
         return list
     end)
+    bar.resetKeys()
     if fn then
         openDocument(fn)
     end
 end)
-local function saveAs(fn)
+local function saveAsRaw(fn)
     local f = assert(fs.open(fn, "w"))
     f.write(documentString)
     f.close()
+end
+local function saveAs(fn)
+    saveAsRaw(fn)
     documentUpdatedSinceSave = false
 end
 local saveAsButton = mbar.button("Save As", function(entry)
     local fn = mbar.popupRead("Save As", 15)
+    bar.resetKeys()
     if fn then
         saveAs(fn)
         documentFilename = fn
@@ -161,7 +172,16 @@ local quitButton = mbar.button("Quit", function()
     return true
 end)
 
-local filesm = mbar.buttonMenu({ newButton, openButton, saveButton, saveAsButton, quitButton })
+local filesm = mbar.buttonMenu {
+    newButton,
+    mbar.divider(),
+    openButton,
+    mbar.divider(),
+    saveButton,
+    saveAsButton,
+    mbar.divider(),
+    quitButton
+}
 
 local fileButton = mbar.button("File", nil, filesm)
 local charMenu = mbar.charMenu(function(self, ch)
@@ -187,12 +207,19 @@ local alignmentMenu = mbar.radialMenu({ "Left", "Center", "Right" }, function(se
 end)
 local colorButton = mbar.button("Color", nil, colorMenu)
 local insertMenu = mbar.buttonMenu {
+    mbar.button("Character", nil, charMenu),
     mbar.button("New Page", function(entry)
         documentString = document:insertPage(cursor)
         document = sdoc.decode(documentString)
         documentContentUpdate()
     end),
-    mbar.button("Character", nil, charMenu)
+    mbar.divider(),
+    mbar.divider(),
+    mbar.divider(),
+    mbar.divider(),
+    mbar.divider(),
+    mbar.divider(),
+    mbar.divider(),
 }
 local undoButton = mbar.button("Undo", function(entry)
     local str = table.remove(undoStates, 2)
@@ -204,8 +231,9 @@ local undoButton = mbar.button("Undo", function(entry)
     end
 end)
 local editMenu = mbar.buttonMenu {
-    colorButton,
     mbar.button("Alignment", nil, alignmentMenu),
+    colorButton,
+    mbar.divider(),
     mbar.button("Insert", nil, insertMenu),
     undoButton
 }
@@ -213,6 +241,20 @@ local editButton = mbar.button("Edit", nil, editMenu)
 
 -- VIEW MENU
 
+local drawRuler = true
+local drawRulerButton = mbar.toggleButton("Ruler", function(entry)
+    drawRuler = entry.value
+end)
+local drawStatusBar = true
+local drawStatusBarButton = mbar.toggleButton("Status Bar", function(entry)
+    drawStatusBar = entry.value
+end)
+drawStatusBarButton.setValue(true)
+drawRulerButton.setValue(true)
+local drawCharInfo = false
+local drawCharInfoButton = mbar.toggleButton("Character Info", function(entry)
+    drawCharInfo = entry.value
+end)
 local renderNewlines = false
 local renderNewlineButton = mbar.toggleButton("New Lines", function(entry)
     renderNewlines = entry.value
@@ -223,9 +265,19 @@ local renderNewpageButton = mbar.toggleButton("New Pages", function(entry)
     renderNewpages = entry.value
     documentRenderUpdate()
 end)
-local viewMenu = mbar.buttonMenu({ renderNewlineButton, renderNewpageButton })
+local debugViewMenu = mbar.buttonMenu {
+    renderNewpageButton,
+    drawCharInfoButton
+}
+local debugViewButton = mbar.button("Debug", nil, debugViewMenu)
+local viewMenu = mbar.buttonMenu({
+    drawRulerButton,
+    drawStatusBarButton,
+    mbar.divider(),
+    renderNewlineButton,
+    debugViewButton
+})
 local viewButton = mbar.button("View", nil, viewMenu)
-local bar
 local helpButton = mbar.button("About", function()
     win.setVisible(true)
     mbar.popup("About", ("ShrekWord v%s"):format(version), { "Close" }, 20)
@@ -272,6 +324,8 @@ end
 
 local function render()
     win.setVisible(false)
+    win.setTextColor(colors.white)
+    win.setBackgroundColor(colors.black)
     if documentUpdateRender then
         blit = sdoc.render(document, a, b, renderNewlines, renderNewpages)
         documentUpdateRender = false
@@ -289,6 +343,39 @@ local function render()
     for i = startPage, endPage do
         local y = ((i - 1) * PHEIGHT) + 5 - scrollOffset
         sdoc.blitOn(blit, i, pageX, y, win)
+    end
+    if drawRuler then
+        win.setTextColor(colors.white)
+        win.setBackgroundColor(colors.black)
+        win.setCursorPos(pageX, 2)
+        for i = 1, WIDTH do
+            local ch = "\183"
+            if i % 5 == 0 then
+                ch = "|"
+            end
+            if i % 10 == 0 then
+                ch = ("%d"):format(i / 10)
+            end
+            win.write(ch)
+        end
+    end
+    if drawStatusBar then
+        win.setTextColor(colors.white)
+        win.setBackgroundColor(colors.gray)
+        win.setCursorPos(1, th)
+        win.clearLine()
+        local info = document.indicies[cursor]
+        win.write(("Page %2d/%2d |"):format(info.page, #document.pages))
+        win.write(("Cursor %3d/%3d"):format(cursor, #document.indicies))
+    end
+    if drawCharInfo then
+        win.setTextColor(colors.white)
+        win.setBackgroundColor(colors.black)
+        win.setCursorPos(1, 3)
+        local fgstr = document.editable.content[1]
+        win.write(("CH:%02X[%1s]"):format(fgstr:byte(cursor, cursor) or 0, fgstr:sub(cursor, cursor)))
+        win.setCursorPos(1, 4)
+        win.write(("PAGE:%1d"):format(document.editable.pages[cursor] or 0))
     end
     bar.render()
     win.setCursorBlink(true)
@@ -483,17 +570,17 @@ local function run()
                     if documentUpdatedSinceSnapshot then
                         documentUpdatedSinceSnapshot = false
                         table.insert(undoStates, 1, { state = documentString, cursor = cursor })
+                        saveAsRaw(".autosave.sdoc")
                         undoStates[5] = nil
                     end
                     tid = os.startTimer(2)
                 end
             end
         end
-
     )
 end
 
-local ok, err = xpcall(mainLoop, debug.traceback)
+local ok, err = xpcall(run, debug.traceback)
 term.setBackgroundColor(colors.black)
 term.setTextColor(colors.white)
 term.clear()

@@ -197,7 +197,7 @@ function docmeta__index:remove(a, b)
         editable.pages[i] = nil
     end
 
-    for i = a, #editable.content[1] do
+    for i = b + 1, #editable.content[1] do
         if editable.linestart[i] then
             editable.linestart[i - sectionWidth] = editable.linestart[i]
             editable.linestart[i] = nil
@@ -332,7 +332,6 @@ function sdoc.decode(str)
     for i, line in ipairs(s) do
         if ln - 1 == h then
             page = page + 1
-            doc.editable.pages[idx] = (doc.editable.pages[idx] or 0) + 1
             ln = 1
         end
         for x = 1, #line do
@@ -395,7 +394,7 @@ function sdoc.decode(str)
             local chn = line[1]:find("\n")
             lastLineHadNewline = not not chn
         end
-        if #page < doc.pageHeight then
+        if #page < doc.pageHeight and pn < #doc.pages then
             -- there is a newpage inserted here
             lastLineHadNewline = true
         end
