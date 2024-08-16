@@ -631,7 +631,7 @@ function mbar.bar(buttons)
             menu = menu.buttons[v].submenu
             menus[#menus + 1] = menu
         end
-        for depth = 1, #menus, 1 do
+        for depth = #menus, 1, -1 do
             local menu = menus[depth]
             if x >= menu.x and x < menu.x + menu.width and y >= menu.y and y < menu.y + menu.height then
                 local clicked = menu.click(x - menu.x + 1, y - menu.y + 1)
