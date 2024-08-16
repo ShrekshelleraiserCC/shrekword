@@ -532,6 +532,24 @@ local function scrollCursor(dlines, dpages)
     moveScreenToFitCursor()
 end
 
+local function selectWord(idx)
+    -- search backwards for a
+    local content = document.editable.content[1]
+    for i = idx, 1, -1 do
+        if content:sub(i, i):match("%s") then
+            break
+        end
+        a = i
+    end
+    for i = idx, #content do
+        if content:sub(i, i):match("%s") then
+            break
+        end
+        b = i
+    end
+end
+
+local lastClick = 0
 local function onEvent(e)
     -- event not consumed, do something with it
     if e[1] == "mouse_scroll" then
@@ -539,6 +557,12 @@ local function onEvent(e)
     elseif e[1] == "mouse_click" then
         local idx = screenToDocumentIndex(e[3], e[4])
         a, b = nil, nil
+        local thisClick = os.epoch("utc")
+        if thisClick - lastClick < 200 and idx == cursor then
+            -- double click
+            selectWord(idx)
+        end
+        lastClick = thisClick
         moveCursor(idx or cursor)
         documentRenderUpdate()
     elseif e[1] == "mouse_drag" then
