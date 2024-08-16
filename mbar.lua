@@ -565,18 +565,22 @@ function mbar.bar(buttons)
         buttonEnds = {},
         bar = true
     }
-    local x = 1
-    for i, v in ipairs(bar.buttons) do
-        v.depth = 1
-        v.entry = i
-        v.parent = bar
-        if v.submenu then
-            v.submenu.updatePos(x)
-            v.submenu.updateDepth(2)
+    function bar.autosize()
+        local x = 1
+        for i, v in ipairs(bar.buttons) do
+            v.depth = 1
+            v.entry = i
+            v.parent = bar
+            if v.submenu then
+                v.submenu.updatePos(x)
+                v.submenu.updateDepth(2)
+            end
+            x = x + #v.label + 2
+            bar.buttonEnds[i] = x
         end
-        x = x + #v.label + 2
-        bar.buttonEnds[i] = x
     end
+
+    bar.autosize()
 
     function bar.render()
         local tw, th = dev.getSize()

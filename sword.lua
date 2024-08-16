@@ -40,7 +40,7 @@ mbar.setWindow(win)
 local function updateDocumentSize(w, h)
     WIDTH, HEIGHT = w, h
     PHEIGHT = HEIGHT + 2
-    pageX = math.max(1, math.floor((tw - WIDTH) / 2))
+    pageX = math.max(2, math.floor((tw - WIDTH) / 2))
 end
 updateDocumentSize(25, 21)
 
@@ -352,7 +352,7 @@ local function render()
     win.clear()
     scrollOffset = math.max(1, scrollOffset)
     local maxScroll = #document.pages * PHEIGHT - th + 4
-    if #document.pages * PHEIGHT > th then
+    if #document.pages * PHEIGHT > th - 2 then
         scrollOffset = math.min(maxScroll, scrollOffset)
     else
         scrollOffset = 1
@@ -363,8 +363,9 @@ local function render()
         local y = ((i - 1) * PHEIGHT) + 5 - scrollOffset
         sdoc.blitOn(blit, i, pageX, y, win)
         if drawRuler then
+            local rulerX = math.max(1, pageX - 2)
             for dy = 1, HEIGHT do
-                win.setCursorPos(pageX - 2, y + dy - 1)
+                win.setCursorPos(rulerX, y + dy - 1)
                 local ch = "\183"
                 if dy % 5 == 0 then
                     ch = "-"
@@ -629,6 +630,7 @@ local function onEvent(e)
         -- moveCursor(cursor + 1)
     elseif e[1] == "term_resize" then
         updateTermSize()
+        bar.autosize()
     elseif e[1] == "paste" then
         writeToDocument(e[2])
     end
