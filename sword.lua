@@ -397,6 +397,7 @@ local function render()
         win.setCursorPos(1, th)
         win.clearLine()
         local info = document.indicies[cursor]
+        win.write(("[%1s]"):format(documentUpdatedSinceSave and "*" or ""))
         win.write(("Page %2d/%2d |"):format(info.page, #document.pages))
         win.write(("Cursor %3d/%3d"):format(cursor, #document.indicies))
     end
@@ -541,15 +542,19 @@ local function selectWord(idx)
         end
         a = i
     end
-    for i = idx, #content do
-        if content:sub(i, i):match("%s") then
-            break
+    if a then
+        cursor = a
+        for i = idx, #content do
+            if content:sub(i, i):match("%s") then
+                break
+            end
+            b = i
         end
-        b = i
     end
 end
 
 local lastClick = 0
+local selectingWords = true
 local function onEvent(e)
     -- event not consumed, do something with it
     if e[1] == "mouse_scroll" then
@@ -558,17 +563,28 @@ local function onEvent(e)
         local idx = screenToDocumentIndex(e[3], e[4])
         a, b = nil, nil
         local thisClick = os.epoch("utc")
-        if thisClick - lastClick < 200 and idx == cursor then
+        local oldcursor = cursor
+        moveCursor(idx or cursor)
+        selectingWords = false
+        if thisClick - lastClick < 200 and idx == oldcursor then
             -- double click
             selectWord(idx)
+            selectingWords = true
         end
         lastClick = thisClick
-        moveCursor(idx or cursor)
         documentRenderUpdate()
     elseif e[1] == "mouse_drag" then
         local idx = screenToDocumentIndex(e[3], e[4])
-        a = cursor
-        b = idx or b or cursor
+        if selectingWords and a and b then
+            local olda = math.min(a, b)
+            local oldb = math.max(a, b)
+            selectWord(idx or math.max(a, b))
+            a = math.min(a or cursor, olda)
+            b = math.max(b or cursor, oldb)
+        else
+            a = cursor
+            b = idx or b or cursor
+        end
         documentRenderUpdate()
     elseif e[1] == "key" then
         if e[2] == keys.backspace then

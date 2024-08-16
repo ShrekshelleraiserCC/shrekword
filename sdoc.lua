@@ -219,10 +219,12 @@ end
 function docmeta__index:setAlignment(idx, alignment, b)
     local editable = deepClone(self.editable)
 
-    for i = b, idx, -1 do
-        local nl = editable.linestart[i]
-        if nl then
-            nl.alignment = alignment
+    if b then
+        for i = b, idx, -1 do
+            local nl = editable.linestart[i]
+            if nl then
+                nl.alignment = alignment
+            end
         end
     end
     for i = idx, 1, -1 do
