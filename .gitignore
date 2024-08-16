@@ -4,3 +4,4 @@ billboard.lua
 *.dump
 *.bimg
 test.lua
+build/sword.lua

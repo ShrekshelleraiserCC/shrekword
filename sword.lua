@@ -2,6 +2,11 @@ local sdoc = require("sdoc")
 local mbar = require("mbar")
 
 local version = "INDEV"
+local buildVersion = '##VERSION'
+
+if buildVersion ~= "##VERSION" then
+    version = version .. "-" .. buildVersion
+end
 
 local running = true
 
@@ -21,6 +26,8 @@ local documentUpdateRender = false
 local documentUpdatedSinceSnapshot = false
 local documentUpdatedSinceSave = false
 local bar
+local clipboard = ""
+local copy, paste
 
 local WIDTH, HEIGHT
 local PHEIGHT
@@ -120,7 +127,6 @@ local blit = sdoc.render(document, a, b)
 local undoStates = { { state = documentString, cursor = cursor } }
 
 local writeToDocument
-
 local openButton = mbar.button("Open", function(entry)
     if not unsavedDocumentPopup() then
         return
@@ -213,29 +219,38 @@ local insertMenu = mbar.buttonMenu {
         document = sdoc.decode(documentString)
         documentContentUpdate()
     end),
-    mbar.divider(),
-    mbar.divider(),
-    mbar.divider(),
-    mbar.divider(),
-    mbar.divider(),
-    mbar.divider(),
-    mbar.divider(),
 }
 local undoButton = mbar.button("Undo", function(entry)
     local str = table.remove(undoStates, 2)
     if str then
         documentString = str.state
         document = sdoc.decode(documentString)
+        updateDocumentSize(document.pageWidth, document.pageHeight)
         documentContentUpdate()
         cursor = str.cursor
     end
+end)
+local selectAllButton = mbar.button("Select All", function(entry)
+    a = 1
+    b = #document.editable.content[1]
+    documentRenderUpdate()
+end)
+local copyButton = mbar.button("Copy", function(entry)
+    copy()
+end)
+local pasteButton = mbar.button("Paste", function(entry)
+    paste()
 end)
 local editMenu = mbar.buttonMenu {
     mbar.button("Alignment", nil, alignmentMenu),
     colorButton,
     mbar.divider(),
     mbar.button("Insert", nil, insertMenu),
-    undoButton
+    undoButton,
+    mbar.divider(),
+    selectAllButton,
+    copyButton,
+    pasteButton
 }
 local editButton = mbar.button("Edit", nil, editMenu)
 
@@ -291,6 +306,7 @@ bar.shortcut(quitButton, keys.q, true)
 bar.shortcut(undoButton, keys.z, true)
 bar.shortcut(newButton, keys.n, true)
 bar.shortcut(openButton, keys.o, true)
+bar.shortcut(selectAllButton, keys.a, true)
 
 ---Writes the string s to the a, b area of the document, updating the selection as necessary
 function writeToDocument(s)
@@ -343,6 +359,19 @@ local function render()
     for i = startPage, endPage do
         local y = ((i - 1) * PHEIGHT) + 5 - scrollOffset
         sdoc.blitOn(blit, i, pageX, y, win)
+        if drawRuler then
+            for dy = 1, HEIGHT do
+                win.setCursorPos(pageX - 2, y + dy - 1)
+                local ch = "\183"
+                if dy % 5 == 0 then
+                    ch = "-"
+                end
+                if dy % 10 == 0 then
+                    ch = ("%d"):format(dy / 10)
+                end
+                win.write(ch)
+            end
+        end
     end
     if drawRuler then
         win.setTextColor(colors.white)
@@ -448,6 +477,17 @@ local function deleteSelection()
     end
 end
 
+function copy()
+    if not (a and b) then
+        return
+    end
+    clipboard = document.editable.content[1]:sub(a, b)
+end
+
+function paste()
+    writeToDocument(clipboard)
+end
+
 local function wrapCursor(npage, nline)
     if nline < 1 then
         npage = npage - 1
@@ -546,6 +586,8 @@ local function onEvent(e)
         -- moveCursor(cursor + 1)
     elseif e[1] == "term_resize" then
         updateTermSize()
+    elseif e[1] == "paste" then
+        writeToDocument(e[2])
     end
 end
 
@@ -559,24 +601,26 @@ local function mainLoop()
     end
 end
 
+local function undoTimer()
+    local tid = os.startTimer(1)
+    while true do
+        local _, id = os.pullEvent("timer")
+        if id == tid then
+            if documentUpdatedSinceSnapshot then
+                documentUpdatedSinceSnapshot = false
+                table.insert(undoStates, 1, { state = documentString, cursor = cursor })
+                saveAsRaw(".autosave.sdoc")
+                undoStates[10] = nil
+            end
+            tid = os.startTimer(1)
+        end
+    end
+end
+
 local function run()
     parallel.waitForAny(
         mainLoop,
-        function()
-            local tid = os.startTimer(2)
-            while true do
-                local _, id = os.pullEvent("timer")
-                if id == tid then
-                    if documentUpdatedSinceSnapshot then
-                        documentUpdatedSinceSnapshot = false
-                        table.insert(undoStates, 1, { state = documentString, cursor = cursor })
-                        saveAsRaw(".autosave.sdoc")
-                        undoStates[5] = nil
-                    end
-                    tid = os.startTimer(2)
-                end
-            end
-        end
+        undoTimer
     )
 end
 

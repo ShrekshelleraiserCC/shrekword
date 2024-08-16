@@ -15,6 +15,7 @@ local args = { ... }
 
 local allowed_args = {
     mini = { type = "flag", description = "Remove whitespace + comments" },
+    version = { type = "value", description = "Replace any '##VERSION' strings with this" }
 }
 
 -- the arguments without - before them
@@ -66,6 +67,7 @@ local matchReturnStr = "^return ([%a_%d]+)"
 local matchCommentStr = "%-%-.-$"
 local matchInlineCommentStr = "%-%-%[%[.-%]%]"
 local matchWhitespaceStr = "^ +"
+local matchVersionString = "'##VERSION'"
 
 ---@class RequiredFile
 ---@field variable string
@@ -151,13 +153,16 @@ local function processFile(fn, processFirst)
         if var and module and not universalModules[module] then
             requireFile(fn, var, module)
         elseif not s:match(matchReturnStr) then
+            local ns = s
             if minifyish then
-                output = output .. s:gsub(matchWhitespaceStr, "")
+                ns = s:gsub(matchWhitespaceStr, "")
                     :gsub(matchInlineCommentStr, "")
                     :gsub(matchCommentStr, "")
-            else
-                output = output .. s
             end
+            if given_args.version then
+                ns = ns:gsub(matchVersionString, ("'%s'"):format(given_args.version))
+            end
+            output = output .. ns
         end
         s = f.readLine(true)
     end
