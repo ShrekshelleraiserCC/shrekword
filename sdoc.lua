@@ -214,10 +214,17 @@ end
 
 ---@param self Document
 ---@param idx integer
+---@param b integer?
 ---@param alignment Alignment
-function docmeta__index:setAlignment(idx, alignment)
+function docmeta__index:setAlignment(idx, alignment, b)
     local editable = deepClone(self.editable)
 
+    for i = b, idx, -1 do
+        local nl = editable.linestart[i]
+        if nl then
+            nl.alignment = alignment
+        end
+    end
     for i = idx, 1, -1 do
         local nl = editable.linestart[i]
         if nl then

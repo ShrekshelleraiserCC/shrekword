@@ -207,7 +207,10 @@ end)
 local alignments = { "l", "c", "r" }
 local alignmentMenu = mbar.radialMenu({ "Left", "Center", "Right" }, function(self)
     local value = alignments[self.selected]
-    documentString = document:setAlignment(cursor, value)
+    if a and b then
+        cursor = math.min(a, b)
+    end
+    documentString = document:setAlignment(cursor, value, b)
     document = sdoc.decode(documentString)
     documentContentUpdate()
 end)
