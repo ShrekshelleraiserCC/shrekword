@@ -77,7 +77,7 @@ local function getLine(y)
     return dev.getLine(y)
 end
 
-local function corner(x, y, w, h)
+local function corner(x, y, w, h, shadow)
     local cfg = dev.getTextColor()
     local cblit = colors.toBlit(cfg)
 
@@ -91,12 +91,21 @@ local function corner(x, y, w, h)
             dev.setCursorPos(x + w, y + h)
             dev.blit("\129", cblit, bgline:sub(x + w, x + w))
         end
+        if shadow then
+            dev.setCursorPos(x, y + h)
+            dev.blit("\130", cblit, bgline:sub(x, x))
+        end
     end
     if x + w <= tw then
         for i = 1, h do
             local _, _, bgline = getLine(y + i - 1)
             dev.setCursorPos(x + w, y + i - 1)
             dev.blit("\149", cblit, bgline:sub(x + w, x + w))
+        end
+        if shadow then
+            dev.setCursorPos(x + w, y)
+            local _, _, bgline = getLine(y)
+            dev.blit("\148", cblit, bgline:sub(x + w, x + w))
         end
     end
 end
@@ -112,11 +121,17 @@ function mbar.box(x, y, w, h)
     dev.setCursorPos(x, y - 1)
     dev.blit(("\143"):rep(w), bgline:sub(x, x + w - 1), cblit:rep(w))
 
+    dev.setCursorPos(x + w, y - 1)
+    dev.blit("\144", cblit, bgline:sub(x + w, x + w))
+
     for dy = 1, h do
         _, _, bgline = getLine(y + dy - 1)
         dev.setCursorPos(x - 1, y + dy - 1)
         dev.blit("\149", bgline:sub(x - 1, x - 1), cblit)
     end
+    _, _, bgline = getLine(y + h)
+    dev.setCursorPos(x - 1, y + h)
+    dev.blit("\130", cblit, bgline:sub(x - 1, x - 1))
 end
 
 ---@param menu Menu
@@ -774,12 +789,12 @@ function mbar.popup(title, text, options, w)
         dev.setCursorPos(optionX, optionY)
         dev.write(" " .. v .. " ")
         color(bg, fg)
-        corner(optionX, optionY, #v + 2, 1)
+        corner(optionX, optionY, #v + 2, 1, true)
         optionPos[i] = optionX
         optionX = optionX + #v + 3
     end
     color(bg, obg)
-    corner(x, y, w, h)
+    mbar.box(x, y, w, h)
     color(ofg, obg)
     while true do
         local _, _, x, y = os.pullEvent("mouse_click")
@@ -824,7 +839,7 @@ function mbar.popupRead(title, w, text, completion)
     dev.setCursorPos(tx, y)
     dev.write(title)
     color(bg, obg)
-    corner(x, y, w, h)
+    mbar.box(x, y, w, h)
     local readY = y + h - 4
     local readWindow = window.create(dev, x + 1, readY, w - 2, 1)
     readWindow.setTextColor(hfg)
@@ -839,7 +854,7 @@ function mbar.popupRead(title, w, text, completion)
     dev.setCursorPos(cancelX, cancelY)
     dev.write(" Cancel ")
     color(bg, fg)
-    corner(cancelX, cancelY, cancelW, 1)
+    corner(cancelX, cancelY, cancelW, 1, true)
 
     local oldWin = term.redirect(readWindow)
 
