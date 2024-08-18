@@ -96,6 +96,7 @@ local universalModules = {
     ["cc.image.nft"] = true,
     ["cc.pretty"] = true,
     ["cc.require"] = true,
+    ["cc.expect"] = true,
 }
 
 local function moduleToFilename(module)

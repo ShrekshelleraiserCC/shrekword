@@ -99,9 +99,12 @@ local function corner(x, y, w, h, shadow)
     end
     if x + w <= tw then
         for i = 1, h do
-            local _, _, bgline = getLine(y + i - 1)
-            dev.setCursorPos(x + w, y + i - 1)
-            dev.blit("\149", cblit, bgline:sub(x + w, x + w))
+            local yp = y + i - 1
+            if yp <= th and yp >= 1 then
+                local _, _, bgline = getLine(yp)
+                dev.setCursorPos(x + w, yp)
+                dev.blit("\149", cblit, bgline:sub(x + w, x + w))
+            end
         end
         if shadow then
             dev.setCursorPos(x + w, y)
@@ -116,23 +119,32 @@ function mbar.box(x, y, w, h)
     local cblit = colors.toBlit(cfg)
     corner(x, y, w, h)
     local tw, th = dev.getSize()
-    dev.setCursorPos(x - 1, y - 1)
-    local _, _, bgline = getLine(y - 1)
-    dev.blit("\159", bgline:sub(x - 1, x - 1), cblit)
-    dev.setCursorPos(x, y - 1)
-    dev.blit(("\143"):rep(w), bgline:sub(x, x + w - 1), cblit:rep(w))
+    local yp = y - 1
+    if yp <= th and yp >= 1 then
+        dev.setCursorPos(x - 1, yp)
+        local _, _, bgline = getLine(yp)
+        dev.blit("\159", bgline:sub(x - 1, x - 1), cblit)
+        dev.setCursorPos(x, yp)
+        dev.blit(("\143"):rep(w), bgline:sub(x, x + w - 1), cblit:rep(w))
+        dev.setCursorPos(x + w, yp)
+        dev.blit("\144", cblit, bgline:sub(x + w, x + w))
+    end
 
-    dev.setCursorPos(x + w, y - 1)
-    dev.blit("\144", cblit, bgline:sub(x + w, x + w))
 
     for dy = 1, h do
-        _, _, bgline = getLine(y + dy - 1)
-        dev.setCursorPos(x - 1, y + dy - 1)
-        dev.blit("\149", bgline:sub(x - 1, x - 1), cblit)
+        local yp = y + dy - 1
+        if yp <= th and yp >= 1 then
+            local _, _, bgline = getLine(yp)
+            dev.setCursorPos(x - 1, yp)
+            dev.blit("\149", bgline:sub(x - 1, x - 1), cblit)
+        end
     end
-    _, _, bgline = getLine(y + h)
-    dev.setCursorPos(x - 1, y + h)
-    dev.blit("\130", cblit, bgline:sub(x - 1, x - 1))
+    local yp = y + h
+    if yp <= th and yp >= 1 then
+        local _, _, bgline = getLine(y + h)
+        dev.setCursorPos(x - 1, y + h)
+        dev.blit("\130", cblit, bgline:sub(x - 1, x - 1))
+    end
 end
 
 ---@param menu Menu
@@ -314,7 +326,7 @@ function mbar.absMenu()
     function menu.updatePos(x, y)
         local w, h = dev.getSize()
         x, y = x or menu.x, y or menu.y
-        y = math.min(y, h - menu.height)
+        y = math.max(2, math.min(y, h - menu.height))
         local maxx = w - menu.width
         x = math.min(maxx, x)
         menu.x = x
@@ -773,7 +785,7 @@ function mbar.popup(title, text, options, w)
 
     local s = require("cc.strings").wrap(text, w - 2)
     local h = #s + 5
-    local x, y = math.floor((tw - w) / 2), math.floor((th - h) / 2)
+    local x, y = math.floor((tw - w) / 2), math.max(3, math.floor((th - h) / 2))
     local optionY = y + h - 2
     fill(x, y, w, h)
     for i, v in ipairs(s) do

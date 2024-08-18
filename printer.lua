@@ -1,3 +1,5 @@
+local printer = {}
+
 ---This is a library to handle mass 16 color printing in ComputerCraft.
 
 -- This requires abstractInvLib https://gist.github.com/MasonGulu/57ef0f52a93304a17a9eaea21f431de6
@@ -8,7 +10,7 @@
 -- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-local abInvLib = require "abstractInvLib"
+local abstractInventory = require "abstractInvLib"
 
 local PAPER_ITEM = "minecraft:paper"
 local DYE_ITEMS = {
@@ -61,11 +63,11 @@ end
 ---@param outputInv string
 ---@param printers string[]?
 ---@return table
-local function printer(stockpileInvs, workspaceInvs, outputInv, printers)
+function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     --- Inventories to pull papers and dyes from
-    local stockpile = abInvLib(stockpileInvs, nil)
+    local stockpile = abstractInventory(stockpileInvs, nil)
     --- list of inventories to use as space for transfering papers around
-    local workspace = abInvLib(workspaceInvs, nil, { filename = "workspace.log", cache = false })
+    local workspace = abstractInventory(workspaceInvs, nil, { filename = "workspace.log", cache = false })
 
     local output = outputInv
 
@@ -279,7 +281,6 @@ local function printer(stockpileInvs, workspaceInvs, outputInv, printers)
     }
 end
 
-
 ---Convert a correctly sized blitmap into a printable page
 ---@param blit {[1]: string, [2]: string}[]
 ---@return printablePage
@@ -358,7 +359,7 @@ end
 ---@param blit table
 ---@return printablePage[]?
 ---@return string?
-local function convertBlit(blit)
+function printer.convertBlit(blit)
     local split = splitBlit(blit)
     if not split then
         return nil, "Unrecognized blit format"
@@ -384,7 +385,7 @@ end
 ---@param text string
 ---@param defColor colChar?
 ---@return printablePage[]
-local function convertPlaintext(text, defColor)
+function printer.convertPlaintext(text, defColor)
     defColor = defColor or "3" -- black default
     local document = {}
     local curLine, curPage = 1, 1
@@ -409,16 +410,11 @@ end
 
 ---@param color colChar
 ---@return boolean
-local function isValidColor(color)
+function printer.isValidColor(color)
     if DYE_ITEMS[color] then
         return true
     end
     return false
 end
 
-return {
-    printer = printer,
-    isValidColor = isValidColor,
-    convertBlit = convertBlit,
-    convertPlaintext = convertPlaintext,
-}
+return printer

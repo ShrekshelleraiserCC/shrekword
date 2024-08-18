@@ -1,3 +1,4 @@
+local abstractInventory
 --- Inventory Abstraction Library
 -- Inventory Peripheral API compatible library that caches the contents of chests, and allows for very fast transfers of items between AbstractInventory objects.
 -- Transfers can occur from slot to slot, or by item name and nbt data.
@@ -32,8 +33,6 @@
 -- Updated 4/14/24 - Added item allocation
 
 local expect = require("cc.expect").expect
-
-local abstractInventory
 
 local function ate(table, item) -- add to end
     table[#table + 1] = item
