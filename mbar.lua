@@ -1,5 +1,6 @@
 local mbar = {}
 
+mbar._VERSION = "1.0.0"
 ---@alias menuCallback fun(entry:Button):boolean?
 ---@alias shortcut {[number]:number,button:Button} map from last key to modifiers like {s = {"ctrl"}}
 
@@ -794,7 +795,7 @@ function mbar.popup(title, text, options, w)
         optionX = optionX + #v + 3
     end
     color(bg, obg)
-    mbar.box(x, y, w, h)
+    corner(x, y, w, h, true)
     color(ofg, obg)
     while true do
         local _, _, x, y = os.pullEvent("mouse_click")
@@ -839,7 +840,7 @@ function mbar.popupRead(title, w, text, completion)
     dev.setCursorPos(tx, y)
     dev.write(title)
     color(bg, obg)
-    mbar.box(x, y, w, h)
+    corner(x, y, w, h, true)
     local readY = y + h - 4
     local readWindow = window.create(dev, x + 1, readY, w - 2, 1)
     readWindow.setTextColor(hfg)

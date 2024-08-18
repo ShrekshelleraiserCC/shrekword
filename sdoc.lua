@@ -1,4 +1,5 @@
 local sdoc = {}
+sdoc._VERSION = "1.0.0"
 
 local ESCAPE_CHAR = "\160"
 

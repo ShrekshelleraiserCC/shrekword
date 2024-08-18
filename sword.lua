@@ -4,10 +4,6 @@ local mbar = require("mbar")
 local version = "INDEV"
 local buildVersion = '##VERSION'
 
-if buildVersion ~= "##VERSION" then
-    version = version .. "-" .. buildVersion
-end
-
 local running = true
 
 local args = { ... }
@@ -298,7 +294,12 @@ local viewMenu = mbar.buttonMenu({
 local viewButton = mbar.button("View", nil, viewMenu)
 local helpButton = mbar.button("About", function()
     win.setVisible(true)
-    mbar.popup("About", ("ShrekWord v%s"):format(version), { "Close" }, 20)
+    local s = ("ShrekWord v%s\nMbar v%s\nSdoc v%s"):format(version, mbar._VERSION, sdoc._VERSION)
+
+    if buildVersion ~= "##VERSION" then
+        s = s .. ("\nBuild %s"):format(buildVersion)
+    end
+    mbar.popup("About", s, { "Close" }, 20)
     bar.resetKeys()
     win.setVisible(false)
 end)
@@ -368,7 +369,7 @@ local function render()
                 win.setCursorPos(rulerX, y + dy - 1)
                 local ch = "\183"
                 if dy % 5 == 0 then
-                    ch = "-"
+                    ch = "\7"
                 end
                 if dy % 10 == 0 then
                     ch = ("%d"):format(dy / 10)
@@ -384,7 +385,7 @@ local function render()
         for i = 1, WIDTH do
             local ch = "\183"
             if i % 5 == 0 then
-                ch = "|"
+                ch = "\7"
             end
             if i % 10 == 0 then
                 ch = ("%d"):format(i / 10)
@@ -399,8 +400,8 @@ local function render()
         win.clearLine()
         local info = document.indicies[cursor]
         win.write(("[%1s]"):format(documentUpdatedSinceSave and "*" or ""))
-        win.write(("Page %2d/%2d |"):format(info.page, #document.pages))
-        win.write(("Cursor %3d/%3d"):format(cursor, #document.indicies))
+        win.write(("Page %d/%d | "):format(info.page, #document.pages))
+        win.write(("Cursor %d/%d"):format(cursor, #document.indicies))
     end
     if drawCharInfo then
         win.setTextColor(colors.white)
