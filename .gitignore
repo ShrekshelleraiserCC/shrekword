@@ -5,3 +5,5 @@ billboard.lua
 *.bimg
 test.lua
 build/sword.lua
+build/sprint.lua
+*.log
