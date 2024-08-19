@@ -13,6 +13,8 @@ local printer = {}
 local abstractInventory = require "abstractInvLib"
 
 local PAPER_ITEM = "minecraft:paper"
+local STRING_ITEM = "minecraft:string"
+local LEATHER_ITEM = "minecraft:leather"
 local DYE_ITEMS = {
     ["0"] = "minecraft:white_dye", -- why?
     ["1"] = "minecraft:orange_dye",
@@ -147,6 +149,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
 
     ---@type table<string,true|nil>
     local freeTurtles = {}
+    local availableTurtles = {}
     local totalTurtles = 0
     ---@type table<string,number>
     local turtleIDs = {}
@@ -156,6 +159,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         totalTurtles = 0
         if lname then
             freeTurtles[lname] = true
+            availableTurtles[#availableTurtles + 1] = lname
             totalTurtles = 1
         end
         local network = require("sprint_network")
@@ -173,6 +177,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             elseif event == "modem_message" and network.isValid(message) then
                 if message.type == "PONG" and not freeTurtles[message.name] then
                     freeTurtles[message.name] = true
+                    availableTurtles[#availableTurtles + 1] = message.name
                     totalTurtles = totalTurtles + 1
                     turtleIDs[message.name] = message.source
                 end
@@ -252,6 +257,13 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         for k, v in pairs(availablePrinters) do
             table.insert(e, function() emptyPrinter(k) end)
         end
+        for k, v in ipairs(availableTurtles) do
+            table.insert(e, function()
+                for i = 1, 16 do
+                    peripheral.call(outputInv, "pullItems", v, i)
+                end
+            end)
+        end
         parallel.waitForAll(table.unpack(e))
     end
 
@@ -273,8 +285,8 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         printTasks[pid] = nil
         page = clone(page)
         local coro = coroutine.create(function()
-            local free = allocateSlot()
             local printer = allocatePrinter()
+            local free = allocateSlot()
             -- move paper to the printer
             stockpile.pushItems(printer, PAPER_ITEM, 1, PRINTER_INPUT_SLOT)
             while true do
@@ -323,23 +335,46 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         return requiredColors
     end
 
+    ---@return number paper
+    ---@return number string
+    ---@return number leather
+    local function getPaperCount()
+        local paper = stockpile.getCount(PAPER_ITEM)
+        local string = stockpile.getCount(STRING_ITEM)
+        local leather = stockpile.getCount(LEATHER_ITEM)
+        return paper, string, leather
+    end
+
     local DOCUMENT_LENGTH_LIMIT = 16
     ---Check if we can print a document
     ---@param document printablePage[]
+    ---@param copies integer
+    ---@param book boolean?
     ---@return boolean success
     ---@return string reason
-    local function canPrint(document)
+    local function canPrint(document, copies, book)
         if #document > DOCUMENT_LENGTH_LIMIT then
-            return false, ("Too many pages! Max %d!"):format(DOCUMENT_LENGTH_LIMIT)
+            return false, ("Too many pages! Max %d."):format(DOCUMENT_LENGTH_LIMIT)
         end
-        if #document > stockpile.getCount(PAPER_ITEM) then
-            return false, "Not enough paper."
+        local paper, string, leather = getPaperCount()
+        local requiredPaper = #document * copies
+        if requiredPaper > paper then
+            return false, ("Not enough paper.\nHave %d of %d."):format(paper, requiredPaper)
+        end
+        local requiredString = math.ceil(#document / 6) * copies
+        if requiredString > string then
+            return false, ("Not enough string.\nHave %d of %d."):format(string, requiredString)
+        end
+        if book and leather < copies then
+            return false, ("Not enough leather.\nHave %d of %d."):format(leather, copies)
         end
 
         local requiredColors = getRequiredInk(document)
         for col, req in pairs(requiredColors) do
-            if req > stockpile.getCount(DYE_ITEMS[col]) then
-                return false, ("Not enough %s."):format(DYE_ITEMS[col])
+            local requiredDye = req * copies
+            local dye = stockpile.getCount(DYE_ITEMS[col])
+            if requiredDye > dye then
+                return false, ("Not enough %s.\nHave %d of %d."):format(DYE_ITEMS[col], requiredDye, dye)
             end
         end
 
@@ -396,13 +431,13 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
                 workspace.pushItems(t, printTasks[v], 1, turtleSlotLut[i])
                 freeSlot(printTasks[v])
             end
-            assert(stockpile.pushItems(t, "minecraft:string", 1, 1) == 1)
+            assert(stockpile.pushItems(t, STRING_ITEM, 1, 1) == 1, "Failed to move string")
             if parentBundle then
                 workspace.pushItems(t, printTasks[parentBundle], 1, 3)
                 freeSlot(printTasks[parentBundle])
             end
             if book then
-                stockpile.pushItems(t, "minecraft:leather", 1, 2)
+                assert(stockpile.pushItems(t, LEATHER_ITEM, 1, 2) == 1, "Failed to move leather")
             end
             if t == lname then
                 turtle.craft()
@@ -428,20 +463,24 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     ---Print a document
     ---@param title string
     ---@param document printablePage[]
+    ---@param copies integer?
     ---@param book boolean?
     ---@return boolean success
     ---@return string? reason
-    local function printDocument(title, document, book)
-        local isPrintable, reason = canPrint(document)
+    local function printDocument(title, document, copies, book)
+        copies = copies or 1
+        local isPrintable, reason = canPrint(document, copies)
         if not isPrintable then
             return isPrintable, reason
         end
         local pages = #document
-        local lid
-        local lastn = math.floor((pages - 1) / 6) * 6 + 1
-        for n = 1, pages, 6 do
-            local islast = n == lastn
-            lid = printBundle(title, { table.unpack(document, n, n + 5) }, n, lid, book and islast, islast)
+        for copy = 1, copies do
+            local lid
+            local lastn = math.floor((pages - 1) / 6) * 6 + 1
+            for n = 1, pages, 6 do
+                local islast = n == lastn
+                lid = printBundle(title, { table.unpack(document, n, n + 5) }, n, lid, book and islast, islast)
+            end
         end
         return true
     end
@@ -484,16 +523,6 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             level[c] = stockpile.getCount(v)
         end
         return level
-    end
-
-    ---@return number paper
-    ---@return number string
-    ---@return number leather
-    local function getPaperCount()
-        local paper = stockpile.getCount("minecraft:paper")
-        local string = stockpile.getCount("minecraft:string")
-        local leather = stockpile.getCount("minecraft:leather")
-        return paper, string, leather
     end
 
     local function defrag()
