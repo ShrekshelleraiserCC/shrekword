@@ -78,7 +78,12 @@ local function getLine(y)
     return dev.getLine(y)
 end
 
-local function corner(x, y, w, h, shadow)
+---@param x integer
+---@param y integer
+---@param w integer
+---@param h integer
+---@param shadow boolean?
+function mbar.corner(x, y, w, h, shadow)
     local cfg = dev.getTextColor()
     local cblit = colors.toBlit(cfg)
 
@@ -117,7 +122,7 @@ end
 function mbar.box(x, y, w, h)
     local cfg = dev.getTextColor()
     local cblit = colors.toBlit(cfg)
-    corner(x, y, w, h)
+    mbar.corner(x, y, w, h)
     local tw, th = dev.getSize()
     local yp = y - 1
     if yp <= th and yp >= 1 then
@@ -158,7 +163,7 @@ local function intelligentCorner(menu)
     local ofg, obg = color()
     local cblit = colors.toBlit(ofg)
     -- corner is free
-    corner(menu.x, menu.y, menu.width, menu.height)
+    mbar.corner(menu.x, menu.y, menu.width, menu.height)
     -- check if we should draw above the menu
     local _, fgline, bgline = getLine(menu.y - 1)
     local tw, th = dev.getSize()
@@ -802,12 +807,12 @@ function mbar.popup(title, text, options, w)
         dev.setCursorPos(optionX, optionY)
         dev.write(" " .. v .. " ")
         color(bg, fg)
-        corner(optionX, optionY, #v + 2, 1, true)
+        mbar.corner(optionX, optionY, #v + 2, 1, true)
         optionPos[i] = optionX
         optionX = optionX + #v + 3
     end
     color(bg, obg)
-    corner(x, y, w, h, true)
+    mbar.corner(x, y, w, h, true)
     color(ofg, obg)
     while true do
         local _, _, x, y = os.pullEvent("mouse_click")
@@ -852,7 +857,7 @@ function mbar.popupRead(title, w, text, completion)
     dev.setCursorPos(tx, y)
     dev.write(title)
     color(bg, obg)
-    corner(x, y, w, h, true)
+    mbar.corner(x, y, w, h, true)
     local readY = y + h - 4
     local readWindow = window.create(dev, x + 1, readY, w - 2, 1)
     readWindow.setTextColor(hfg)
@@ -867,7 +872,7 @@ function mbar.popupRead(title, w, text, completion)
     dev.setCursorPos(cancelX, cancelY)
     dev.write(" Cancel ")
     color(bg, fg)
-    corner(cancelX, cancelY, cancelW, 1, true)
+    mbar.corner(cancelX, cancelY, cancelW, 1, true)
 
     local oldWin = term.redirect(readWindow)
 
