@@ -62,7 +62,7 @@ end
 ---@param workspaceInvs string[]
 ---@param outputInv string
 ---@param printers string[]?
----@return table
+---@return ColorPrinter
 function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     --- Inventories to pull papers and dyes from
     local stockpile = abstractInventory(stockpileInvs, nil)
@@ -195,6 +195,19 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         coroutine.resume(printThreads[#printThreads])
     end
 
+    ---@param document printablePage[]
+    ---@return table<colChar,integer>
+    local function getRequiredInk(document)
+        ---@type table<colChar,integer>
+        local requiredColors = {}
+        for n, page in pairs(document) do
+            for col, _ in pairs(page) do
+                requiredColors[col] = (requiredColors[col] or 0) + 1
+            end
+        end
+        return requiredColors
+    end
+
     ---Check if we can print a document
     ---@param document printablePage[]
     ---@return boolean success
@@ -203,14 +216,8 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         if #document > stockpile.getCount(PAPER_ITEM) then
             return false, "Not enough paper."
         end
-        ---@type table<colChar,integer>
-        local requiredColors = {}
-        for n, page in pairs(document) do
-            for col, _ in pairs(page) do
-                requiredColors[col] = (requiredColors[col] or 0) + 1
-            end
-        end
 
+        local requiredColors = getRequiredInk(document)
         for col, req in pairs(requiredColors) do
             if req > stockpile.getCount(DYE_ITEMS[col]) then
                 return false, ("Not enough %s."):format(DYE_ITEMS[col])
@@ -272,13 +279,36 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         end
     end
 
-    return {
+    local function getInkLevels()
+        local level = {}
+        for c, v in pairs(DYE_ITEMS) do
+            level[c] = stockpile.getCount(v)
+        end
+        return level
+    end
+
+    ---@return number paper
+    ---@return number string
+    ---@return number leather
+    local function getPaperCount()
+        local paper = stockpile.getCount("minecraft:paper")
+        local string = stockpile.getCount("minecraft:string")
+        local leather = stockpile.getCount("minecraft:leather")
+        return paper, string, leather
+    end
+
+    ---@class ColorPrinter
+    local colorPrinter = {
         printDocument = printDocument,
         printPage = printPage,
         canPrint = canPrint,
         emptyPrinters = emptyPrinters,
-        start = processPrintQueue
+        start = processPrintQueue,
+        getInkLevels = getInkLevels,
+        getRequiredInk = getRequiredInk,
+        getPaperCount = getPaperCount
     }
+    return colorPrinter
 end
 
 ---Convert a correctly sized blitmap into a printable page
