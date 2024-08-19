@@ -57,6 +57,18 @@ local function clone(ot)
     return nt
 end
 
+local lname
+if turtle then
+    -- we are on a turtle
+    local modem = assert(peripheral.find("modem", function(name, wrapped)
+        return not wrapped.isWireless()
+    end), "On a turtle, but not attached to the network!")
+
+    lname = assert(modem.getNameLocal(), "Turtle not attached to network!")
+end
+local MODEM_PORT = 48752
+local PROTOCOL = "SHREKPRINT"
+
 ---Create a printer manager
 ---@param stockpileInvs string[]
 ---@param workspaceInvs string[]
@@ -73,13 +85,19 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
 
     local attachedPeripherals = peripheral.getNames()
 
-    ---@type table<integer,string> printers open to print on
-    local availablePrinters = printers or {}
+    ---@type table<string,true> printers open to print on
+    local availablePrinters = {}
+    local totalPrinters = 0
     if not printers then
         for k, v in ipairs(attachedPeripherals) do
             if peripheral.hasType(v, "printer") then
-                availablePrinters[#availablePrinters + 1] = v
+                availablePrinters[v] = true
+                totalPrinters = totalPrinters + 1
             end
+        end
+    else
+        for i, v in ipairs(printers) do
+            availablePrinters[v] = true
         end
     end
 
@@ -89,11 +107,16 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     ---@type thread[]
     local printThreads = {}
 
+    ---@alias printID table
+    ---@type table<printID,number> workspace slot this tasks' output was placed into
+    local printTasks = setmetatable({}, { __mode = 'k' })
+
     ---@type table<integer,true|nil>
     local freeSlots = {}
     for i = 1, workspace.size() do
         freeSlots[i] = true
     end
+    local totalSlots = workspace.size()
 
     ---@return integer
     local function allocateSlot()
@@ -112,21 +135,102 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         os.queueEvent("slot_freed")
     end
 
+    ---@return number used
+    ---@return number total
+    local function slotUsage()
+        local count = 0
+        for _ in pairs(freeSlots) do
+            count = count + 1
+        end
+        return totalSlots - count, totalSlots
+    end
+
+    ---@type table<string,true|nil>
+    local freeTurtles = {}
+    local totalTurtles = 0
+    ---@type table<string,number>
+    local turtleIDs = {}
+
+    local function pingTurtles()
+        freeTurtles = {}
+        totalTurtles = 0
+        if lname then
+            freeTurtles[lname] = true
+            totalTurtles = 1
+        end
+        local network = require("sprint_network")
+        network.wiredModem.transmit(MODEM_PORT, MODEM_PORT, {
+            type = "PING",
+            destination = "*",
+            source = os.getComputerID(),
+            protocol = PROTOCOL,
+        })
+        local tid = os.startTimer(0.2)
+        while true do
+            local event, side, channel, replyChannel, message, distance = os.pullEvent()
+            if event == "timer" and side == tid then
+                return
+            elseif event == "modem_message" and network.isValid(message) then
+                if message.type == "PONG" and not freeTurtles[message.name] then
+                    freeTurtles[message.name] = true
+                    totalTurtles = totalTurtles + 1
+                    turtleIDs[message.name] = message.source
+                end
+            end
+        end
+    end
+
+    ---@return string
+    local function allocateTurtle()
+        local t = next(freeTurtles)
+        if not t then
+            os.pullEvent("turtle_freed")
+            return allocateTurtle()
+        end
+        freeTurtles[t] = nil
+        return t
+    end
+    ---@param t string
+    local function freeTurtle(t)
+        freeTurtles[t] = true
+        os.queueEvent("turtle_freed")
+    end
+
+    ---@return number used
+    ---@return number total
+    local function turtleUsage()
+        local count = 0
+        for _ in pairs(freeTurtles) do
+            count = count + 1
+        end
+        return totalTurtles - count, totalTurtles
+    end
+
     ---@return string
     local function allocatePrinter()
-        local i, printer = next(availablePrinters)
+        local printer = next(availablePrinters)
         if not printer then
             os.pullEvent("printer_freed")
             return allocatePrinter()
         end
-        availablePrinters[i] = nil -- set as busy
+        availablePrinters[printer] = nil -- set as busy
         return printer
     end
 
     ---@param printer string
     local function freePrinter(printer)
-        availablePrinters[#availablePrinters + 1] = printer
+        availablePrinters[printer] = true
         os.queueEvent("printer_freed")
+    end
+
+    ---@return number used
+    ---@return number total
+    local function printerUsage()
+        local count = 0
+        for _ in pairs(availablePrinters) do
+            count = count + 1
+        end
+        return totalPrinters - count, totalPrinters
     end
 
     local function emptyPrinter(printer)
@@ -146,17 +250,27 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         end
         local e = {}
         for k, v in pairs(availablePrinters) do
-            table.insert(e, function() emptyPrinter(v) end)
+            table.insert(e, function() emptyPrinter(k) end)
         end
         parallel.waitForAll(table.unpack(e))
     end
+
+    local function waitForTask(pid)
+        while not printTasks[pid] do
+            os.pullEvent("page_print_finished")
+        end
+    end
+
     ---Print a given page
     ---@param name string
     ---@param page printablePage
+    ---@return printID?
     local function printPage(name, page)
         if not next(page) then
             return
         end
+        local pid = {}
+        printTasks[pid] = nil
         page = clone(page)
         local coro = coroutine.create(function()
             local free = allocateSlot()
@@ -182,9 +296,9 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
                 if not next(page) then
                     -- ran out of colors
                     assert(workspace.pullItems(printer, PRINTER_OUT_SLOT, 1, free) == 1, "Failed to move")
-                    assert(workspace.pushItems(output, free, 1, nil, nil, { optimal = false }) == 1, "Failed to move")
                     freePrinter(printer)
-                    freeSlot(free)
+                    printTasks[pid] = free
+                    os.queueEvent("page_print_finished", pid)
                     return
                 end
                 assert(workspace.pullItems(printer, PRINTER_OUT_SLOT, 1, free) == 1, "Failed to move")
@@ -193,6 +307,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         end)
         printThreads[#printThreads + 1] = coro
         coroutine.resume(printThreads[#printThreads])
+        return pid
     end
 
     ---@param document printablePage[]
@@ -208,11 +323,15 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         return requiredColors
     end
 
+    local DOCUMENT_LENGTH_LIMIT = 16
     ---Check if we can print a document
     ---@param document printablePage[]
     ---@return boolean success
     ---@return string reason
     local function canPrint(document)
+        if #document > DOCUMENT_LENGTH_LIMIT then
+            return false, ("Too many pages! Max %d!"):format(DOCUMENT_LENGTH_LIMIT)
+        end
         if #document > stockpile.getCount(PAPER_ITEM) then
             return false, "Not enough paper."
         end
@@ -227,29 +346,109 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         return true, ""
     end
 
+    local turtleSlotLut = {
+        5, 6, 7,
+        9, 10, 11
+    }
+    local function tellTurtleToCraftAndWait(name)
+        local network = require("sprint_network")
+        network.wiredModem.transmit(network.MODEM_PORT, network.MODEM_PORT, {
+            type = "CRAFT",
+            source = os.computerID(),
+            destination = turtleIDs[name],
+            protocol = network.PROTOCOL
+        })
+        while true do
+            local _, side, channel, replyChannel, message, distance = os.pullEvent("modem_message")
+            if network.isValid(message) and message.type == "CRAFTED" then
+                return
+            end
+        end
+    end
+    ---@param title string
+    ---@param document printablePage[]
+    ---@param bundleStart integer
+    ---@param parentBundle printID?
+    ---@param book boolean?
+    ---@param last boolean?
+    ---@return printID
+    local function printBundle(title, document, bundleStart, parentBundle, book, last)
+        local tasks = {}
+        for pn, page in ipairs(document) do
+            local s = title
+            if bundleStart > 1 or pn ~= 1 then
+                s = s .. " " .. bundleStart + pn - 1
+            end
+            tasks[#tasks + 1] = printPage(s, page)
+        end
+        local pid = {}
+        printTasks[pid] = nil
+        local coro = coroutine.create(function()
+            for _, v in ipairs(tasks) do
+                waitForTask(v)
+            end
+            if parentBundle then
+                waitForTask(parentBundle)
+            end
+            -- all of the tasks in this bundle have finished, craft it
+            local t = allocateTurtle()
+            for i, v in ipairs(tasks) do
+                workspace.pushItems(t, printTasks[v], 1, turtleSlotLut[i])
+                freeSlot(printTasks[v])
+            end
+            assert(stockpile.pushItems(t, "minecraft:string", 1, 1) == 1)
+            if parentBundle then
+                workspace.pushItems(t, printTasks[parentBundle], 1, 3)
+                freeSlot(printTasks[parentBundle])
+            end
+            if book then
+                stockpile.pushItems(t, "minecraft:leather", 1, 2)
+            end
+            if t == lname then
+                turtle.craft()
+            else
+                tellTurtleToCraftAndWait(t)
+            end
+            local free = allocateSlot()
+            workspace.pullItems(t, 1, 1, free)
+            printTasks[pid] = free
+            os.queueEvent("page_print_finished", pid)
+            if last then
+                workspace.pushItems(outputInv, free)
+                freeSlot(free)
+            end
+            freeTurtle(t)
+        end)
+
+        printThreads[#printThreads + 1] = coro
+        coroutine.resume(printThreads[#printThreads])
+        return pid
+    end
+
     ---Print a document
     ---@param title string
     ---@param document printablePage[]
+    ---@param book boolean?
     ---@return boolean success
     ---@return string? reason
-    local function printDocument(title, document)
+    local function printDocument(title, document, book)
         local isPrintable, reason = canPrint(document)
         if not isPrintable then
             return isPrintable, reason
         end
         local pages = #document
-        for n, page in ipairs(document) do
-            if pages > 1 then
-                printPage(string.format("%s (%u of %u)", title, n, pages), page)
-            else
-                printPage(title, page)
-            end
+        local lid
+        local lastn = math.floor((pages - 1) / 6) * 6 + 1
+        for n = 1, pages, 6 do
+            local islast = n == lastn
+            lid = printBundle(title, { table.unpack(document, n, n + 5) }, n, lid, book and islast, islast)
         end
         return true
     end
 
     --- Start processing print queue, run this in parallel with your code.
     local function processPrintQueue()
+        pingTurtles()
         while true do
             local timerId = os.startTimer(0)
             local e = table.pack(os.pullEventRaw())
@@ -297,6 +496,18 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         return paper, string, leather
     end
 
+    local function defrag()
+        stockpile.defrag()
+    end
+
+    local function refresh()
+        stockpile.refreshStorage()
+    end
+
+    local function threadCount()
+        return #printThreads
+    end
+
     ---@class ColorPrinter
     local colorPrinter = {
         printDocument = printDocument,
@@ -306,7 +517,14 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         start = processPrintQueue,
         getInkLevels = getInkLevels,
         getRequiredInk = getRequiredInk,
-        getPaperCount = getPaperCount
+        getPaperCount = getPaperCount,
+        defrag = defrag,
+        refresh = refresh,
+        slotUsage = slotUsage,
+        turtleUsage = turtleUsage,
+        printerUsage = printerUsage,
+        threadCount = threadCount,
+        pingTurtles = pingTurtles
     }
     return colorPrinter
 end
@@ -416,7 +634,7 @@ end
 ---@param defColor colChar?
 ---@return printablePage[]
 function printer.convertPlaintext(text, defColor)
-    defColor = defColor or "3" -- black default
+    defColor = defColor or "f" -- black default
     local document = {}
     local curLine, curPage = 1, 1
     local function incLine()
