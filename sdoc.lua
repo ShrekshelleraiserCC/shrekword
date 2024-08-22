@@ -105,6 +105,7 @@ end
 ---@field blit BLIT[]
 
 ---@class EditableDocument
+---@field title string?
 ---@field pageWidth integer
 ---@field pageHeight integer
 ---@field content string[]

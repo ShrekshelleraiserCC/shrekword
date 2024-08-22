@@ -79,7 +79,7 @@ local printButton = mbar.button("Print...", function(entry)
         if doc then
             local toprint, err = printer.convertBlit(doc.blit)
             if toprint then
-                local ok, err = p.printDocument("TEST", toprint, true)
+                local ok, err = p.printDocument("TEST", toprint, 12, true)
                 if not ok then
                     mbar.popup("Error", err or "", { "Ok" }, 15)
                 end
@@ -205,7 +205,42 @@ local function render()
 end
 
 local function handleRednet(id, msg)
-
+    if type(msg) ~= "table" then
+        return
+    end
+    if msg.type == "DOCINFO" then
+        local ok, document = pcall(sdoc.decode, msg.document)
+        if not ok then
+            rednet.send(id, { type = "DOCINFO", result = false, reason = document }, network.PROTOCOL)
+            return
+        end
+        local toprint, err = printer.convertBlit(document.blit)
+        if not toprint then
+            rednet.send(id, { type = "DOCINFO", result = false, reason = err }, network.PROTOCOL)
+            return
+        end
+        local can, reason = p.canPrint(toprint, msg.copies, msg.asBook)
+        rednet.send(id, { type = "DOCINFO", result = can, reason = reason }, network.PROTOCOL)
+    elseif msg.type == "PRINT" then
+        local ok, document = pcall(sdoc.decode, msg.document)
+        if not ok then
+            rednet.send(id, { type = "PRINT", result = false, reason = document }, network.PROTOCOL)
+            return
+        end
+        local toprint, err = printer.convertBlit(document.blit)
+        if not toprint then
+            rednet.send(id, { type = "PRINT", result = false, reason = err }, network.PROTOCOL)
+            return
+        end
+        local can, reason = p.printDocument(document.editable.title or "Untitled Document", toprint, msg.copies,
+            msg.asBook)
+        rednet.send(id, { type = "PRINT", result = can, reason = reason }, network.PROTOCOL)
+    elseif msg.type == "INFO" then
+        local inkLevels = p.getInkLevels()
+        local paper, string, leather = p.getPaperCount()
+        rednet.send(id, { type = "INFO", ink = inkLevels, paper = paper, string = string, leather = leather },
+            network.PROTOCOL)
+    end
 end
 
 local function rednetThread()
@@ -217,10 +252,6 @@ local function rednetThread()
     end
 end
 
-local function remoteTurtleThread()
-
-end
-
 parallel.waitForAny(
     function()
         while running do
@@ -229,7 +260,8 @@ parallel.waitForAny(
             bar.onEvent(e)
         end
     end,
-    p.start
+    p.start,
+    rednetThread
 )
 term.clear()
 term.setCursorPos(1, 1)

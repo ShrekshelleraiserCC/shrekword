@@ -830,8 +830,9 @@ end
 ---@param w integer
 ---@param text string?
 ---@param completion function?
+---@param default string?
 ---@return string?
-function mbar.popupRead(title, w, text, completion)
+function mbar.popupRead(title, w, text, completion, default)
     dev.setCursorBlink(false)
     local tw, th = dev.getSize()
     local ofg, obg = color(mfg, mbg)
@@ -878,7 +879,7 @@ function mbar.popupRead(title, w, text, completion)
 
     local value
     parallel.waitForAny(function()
-        value = read(nil, nil, completion)
+        value = read(nil, nil, completion, default)
     end, function()
         while true do
             local _, _, x, y = os.pullEvent("mouse_click")

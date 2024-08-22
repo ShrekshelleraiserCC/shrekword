@@ -1,5 +1,6 @@
 local sdoc = require("sdoc")
 local mbar = require("mbar")
+local spclib = require("spclib")
 
 local version = "INDEV"
 local buildVersion = '##VERSION'
@@ -166,6 +167,70 @@ local saveButton = mbar.button("Save", function(entry)
     end
 end)
 local newButton = mbar.button("New", newDocument)
+
+local modems = {}
+peripheral.find("modem", function(name, wrapped)
+    modems[#modems + 1] = name
+    return true
+end)
+local selectedModem
+local selectedHost
+local completion = require "cc.completion"
+local printButton = mbar.button("Print", function(entry)
+    if #modems == 0 then
+        mbar.popup("No Modems!", "To print you need a modem connected.", { "Close" }, 20)
+        return
+    end
+    if #modems > 1 and not selectedModem then
+        local selection = mbar.popupRead("Modem?", 20, "Enter the modem to use for printer lookup", function(str)
+            return completion.choice(str, modems, false)
+        end)
+        if not selection then
+            return
+        end
+        if not peripheral.wrap(selection) then
+            return
+        end
+        selectedModem = selection
+    elseif not selectedModem then
+        selectedModem = modems[1]
+    end
+    rednet.open(selectedModem)
+    if not selectedHost then
+        local hosts = { rednet.lookup(spclib.PROTOCOL) }
+        if #hosts == 0 then
+            mbar.popup("No Printers!", "Found no printers!", { "Close" }, 15)
+            return
+        elseif #hosts > 1 then
+            -- TODO
+            error("EEEE")
+        else
+            selectedHost = hosts[1] --[[@as number]]
+        end
+    end
+    local copies = tonumber(mbar.popupRead("Copies?", 15, nil, nil, "1"))
+    if not copies then
+        return
+    end
+    local book = mbar.popup("Books?", "Bundle each copy into a book", { "No", "Yes" }, 20) == 2
+    local ok, status, ink = spclib.aboutDocument(selectedHost, documentString, copies, book)
+    if not ok then
+        mbar.popup("Cannot Print", status, { "Close" }, 20)
+        return
+    end
+    local choice = mbar.popup("Print?", "Document will consume:", { "No", "Yes" }, 20)
+    if choice == 1 then
+        return
+    end
+    ok, status = spclib.printDocument(selectedHost, documentString, copies, book)
+    if not ok then
+        mbar.popup("Failed to print", status, { "Close" }, 20)
+        return
+    end
+    mbar.popup("Printing!", "The document is now printing!", { "Ok" }, 15)
+end)
+
+
 local quitButton = mbar.button("Quit", function()
     if not unsavedDocumentPopup() then
         return
@@ -182,6 +247,7 @@ local filesm = mbar.buttonMenu {
     saveButton,
     saveAsButton,
     mbar.divider(),
+    printButton,
     quitButton
 }
 

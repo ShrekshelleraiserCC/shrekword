@@ -22,6 +22,7 @@ local velymin, velymax = 0.5, 0.7
 local velyrange = velymin - velymax
 local px, py = 1, 1
 local crafts = 0
+local failures = 0
 local image = paintutils.parseImage([[fc7c77f
 fc7c00f
 f00c00f
@@ -49,6 +50,12 @@ local function render()
     win.write("ShrekPrint Crafter Online...")
     win.setCursorPos(1, 2)
     win.write(("I have crafted %d books!"):format(crafts))
+    if failures > 0 then
+        win.setCursorPos(1, 3)
+        win.setTextColor(colors.red)
+        win.setBackgroundColor(colors.black)
+        win.write(("I have been lied to %d times..."):format(failures))
+    end
     local old = term.redirect(win)
     paintutils.drawImage(image, math.floor(px), math.floor(py))
     px, py = px + velx, py + vely
@@ -92,7 +99,9 @@ local function mainThread()
                 })
             elseif message.type == "CRAFT" then
                 crafts = crafts + 1
-                turtle.craft()
+                if not turtle.craft() then
+                    failures = failures + 1
+                end
                 modem.transmit(MODEM_PORT, MODEM_PORT, {
                     source = os.computerID(),
                     destination = message.source,

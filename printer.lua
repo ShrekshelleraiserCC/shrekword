@@ -81,7 +81,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     --- Inventories to pull papers and dyes from
     local stockpile = abstractInventory(stockpileInvs, nil)
     --- list of inventories to use as space for transfering papers around
-    local workspace = abstractInventory(workspaceInvs, nil, { filename = "workspace.log", cache = false })
+    local workspace = abstractInventory(workspaceInvs, nil)
 
     local output = outputInv
 
@@ -248,6 +248,15 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         end
         freeSlot(slot)
     end
+    local function addSuppliesFromOutput()
+        local inv = abstractInventory({ outputInv })
+        inv.pushItems(stockpile, PAPER_ITEM)
+        inv.pushItems(stockpile, STRING_ITEM)
+        inv.pushItems(stockpile, LEATHER_ITEM)
+        for _, v in pairs(DYE_ITEMS) do
+            inv.pushItems(stockpile, v)
+        end
+    end
     ---Empty all printers
     local function emptyPrinters()
         for k, v in pairs(workspace.list()) do
@@ -273,11 +282,34 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         end
     end
 
+    local function epullItems(to, from, fromSlot, amount, toSlot, nbt, options)
+        local count = 0
+        while to.pullItems(from, fromSlot, amount, toSlot, nbt, options) < amount do
+            count = count + 1
+            if count > 3 then
+                error(("%s.pullItems(%s, %s, %s, %s, %s, %s, %s)"):format(to, from, fromSlot, amount, toSlot, nbt,
+                    options))
+            end
+        end
+    end
+
+    local function epushItems(from, to, fromSlot, amount, toSlot, nbt, options)
+        local count = 0
+        while from.pushItems(to, fromSlot, amount, toSlot, nbt, options) < amount do
+            count = count + 1
+            if count > 3 then
+                error(("%s.pushItems(%s, %s, %s, %s, %s, %s, %s)"):format(from, to, fromSlot, amount, toSlot, nbt,
+                    options))
+            end
+        end
+    end
+
     ---Print a given page
     ---@param name string
     ---@param page printablePage
+    ---@param onlyPage boolean?
     ---@return printID?
-    local function printPage(name, page)
+    local function printPage(name, page, onlyPage)
         if not next(page) then
             return
         end
@@ -288,12 +320,14 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             local printer = allocatePrinter()
             local free = allocateSlot()
             -- move paper to the printer
-            stockpile.pushItems(printer, PAPER_ITEM, 1, PRINTER_INPUT_SLOT)
+            -- assert(stockpile.pushItems(printer, PAPER_ITEM, 1, PRINTER_INPUT_SLOT) == 1, "Failed to move new paper")
+            epushItems(stockpile, printer, PAPER_ITEM, 1, PRINTER_INPUT_SLOT)
             while true do
                 -- get the next color
                 local col, pg = next(page)
                 page[col] = nil
-                stockpile.pushItems(printer, DYE_ITEMS[col], 1, PRINTER_DYE_SLOT)
+                -- stockpile.pushItems(printer, DYE_ITEMS[col], 1, PRINTER_DYE_SLOT)
+                epushItems(stockpile, printer, DYE_ITEMS[col], 1, PRINTER_DYE_SLOT)
                 if not peripheral.call(printer, "newPage") then
                     error("Failed to start page on " .. printer, 2)
                 end
@@ -307,14 +341,24 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
                 peripheral.call(printer, "endPage")
                 if not next(page) then
                     -- ran out of colors
-                    assert(workspace.pullItems(printer, PRINTER_OUT_SLOT, 1, free) == 1, "Failed to move")
+                    -- assert(workspace.pullItems(printer, PRINTER_OUT_SLOT, 1, free) == 1,
+                    --     "Failed to move paper out of printer")
+                    epullItems(workspace, printer, PRINTER_OUT_SLOT, 1, free)
                     freePrinter(printer)
                     printTasks[pid] = free
                     os.queueEvent("page_print_finished", pid)
+                    if onlyPage then
+                        epushItems(workspace, outputInv, free, 1, nil, nil, { optimal = false })
+                        freeSlot(free)
+                    end
                     return
                 end
-                assert(workspace.pullItems(printer, PRINTER_OUT_SLOT, 1, free) == 1, "Failed to move")
-                assert(workspace.pushItems(printer, free, 1, PRINTER_INPUT_SLOT) == 1, "Failed to move")
+                epullItems(workspace, printer, PRINTER_OUT_SLOT, 1, free)
+                -- assert(workspace.pullItems(printer, PRINTER_OUT_SLOT, 1, free) == 1,
+                --     "Failed to move paper out of printer")
+                epushItems(workspace, printer, free, 1, PRINTER_INPUT_SLOT)
+                -- assert(workspace.pushItems(printer, free, 1, PRINTER_INPUT_SLOT) == 1,
+                --     "Failed to move paper into printer")
             end
         end)
         printThreads[#printThreads + 1] = coro
@@ -354,7 +398,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     ---@return string reason
     local function canPrint(document, copies, book)
         if #document > DOCUMENT_LENGTH_LIMIT then
-            return false, ("Too many pages! Max %d."):format(DOCUMENT_LENGTH_LIMIT)
+            return false, ("Too many pages! %d of max %d."):format(#document, DOCUMENT_LENGTH_LIMIT)
         end
         local paper, string, leather = getPaperCount()
         local requiredPaper = #document * copies
@@ -362,10 +406,17 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             return false, ("Not enough paper.\nHave %d of %d."):format(paper, requiredPaper)
         end
         local requiredString = math.ceil(#document / 6) * copies
+        if #document == 1 then
+            requiredString = 0
+        end
         if requiredString > string then
             return false, ("Not enough string.\nHave %d of %d."):format(string, requiredString)
         end
-        if book and leather < copies then
+        local requiredLeather = book and copies or 0
+        if #document == 1 then
+            requiredLeather = 0
+        end
+        if requiredLeather > leather then
             return false, ("Not enough leather.\nHave %d of %d."):format(leather, copies)
         end
 
@@ -374,7 +425,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             local requiredDye = req * copies
             local dye = stockpile.getCount(DYE_ITEMS[col])
             if requiredDye > dye then
-                return false, ("Not enough %s.\nHave %d of %d."):format(DYE_ITEMS[col], requiredDye, dye)
+                return false, ("Not enough %s.\nHave %d of %d."):format(DYE_ITEMS[col], dye, requiredDye)
             end
         end
 
@@ -387,15 +438,16 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     }
     local function tellTurtleToCraftAndWait(name)
         local network = require("sprint_network")
+        local turtleID = turtleIDs[name]
         network.wiredModem.transmit(network.MODEM_PORT, network.MODEM_PORT, {
             type = "CRAFT",
             source = os.computerID(),
-            destination = turtleIDs[name],
+            destination = turtleID,
             protocol = network.PROTOCOL
         })
         while true do
             local _, side, channel, replyChannel, message, distance = os.pullEvent("modem_message")
-            if network.isValid(message) and message.type == "CRAFTED" then
+            if network.isValid(message) and message.type == "CRAFTED" and message.source == turtleID then
                 return
             end
         end
@@ -419,39 +471,45 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         local pid = {}
         printTasks[pid] = nil
         local coro = coroutine.create(function()
+            local free
+            if not last then
+                free = allocateSlot()
+            end
             for _, v in ipairs(tasks) do
                 waitForTask(v)
             end
             if parentBundle then
                 waitForTask(parentBundle)
             end
-            -- all of the tasks in this bundle have finished, craft it
             local t = allocateTurtle()
             for i, v in ipairs(tasks) do
-                workspace.pushItems(t, printTasks[v], 1, turtleSlotLut[i])
+                epushItems(workspace, t, printTasks[v], 1, turtleSlotLut[i])
                 freeSlot(printTasks[v])
             end
-            assert(stockpile.pushItems(t, STRING_ITEM, 1, 1) == 1, "Failed to move string")
+            epushItems(stockpile, t, STRING_ITEM, 1, 1)
+            -- assert(stockpile.pushItems(t, STRING_ITEM, 1, 1) == 1, "Failed to move string")
             if parentBundle then
-                workspace.pushItems(t, printTasks[parentBundle], 1, 3)
+                epushItems(workspace, t, printTasks[parentBundle], 1, 3)
+                -- workspace.pushItems(t, printTasks[parentBundle], 1, 3)
                 freeSlot(printTasks[parentBundle])
             end
             if book then
-                assert(stockpile.pushItems(t, LEATHER_ITEM, 1, 2) == 1, "Failed to move leather")
+                epushItems(stockpile, t, LEATHER_ITEM, 1, 2)
+                -- assert(stockpile.pushItems(t, LEATHER_ITEM, 1, 2) == 1, "Failed to move leather")
             end
             if t == lname then
                 turtle.craft()
             else
                 tellTurtleToCraftAndWait(t)
             end
-            local free = allocateSlot()
-            workspace.pullItems(t, 1, 1, free)
-            printTasks[pid] = free
-            os.queueEvent("page_print_finished", pid)
             if last then
-                workspace.pushItems(outputInv, free)
-                freeSlot(free)
+                peripheral.call(outputInv, "pullItems", t, 1, 1)
+            else
+                epullItems(workspace, t, 1, 1, free)
+                -- workspace.pullItems(t, 1, 1, free)
+                printTasks[pid] = free
             end
+            os.queueEvent("page_print_finished", pid)
             freeTurtle(t)
         end)
 
@@ -469,7 +527,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     ---@return string? reason
     local function printDocument(title, document, copies, book)
         copies = copies or 1
-        local isPrintable, reason = canPrint(document, copies)
+        local isPrintable, reason = canPrint(document, copies, book)
         if not isPrintable then
             return isPrintable, reason
         end
@@ -477,9 +535,13 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         for copy = 1, copies do
             local lid
             local lastn = math.floor((pages - 1) / 6) * 6 + 1
-            for n = 1, pages, 6 do
-                local islast = n == lastn
-                lid = printBundle(title, { table.unpack(document, n, n + 5) }, n, lid, book and islast, islast)
+            if pages > 1 then
+                for n = 1, pages, 6 do
+                    local islast = n == lastn
+                    lid = printBundle(title, { table.unpack(document, n, n + 5) }, n, lid, book and islast, islast)
+                end
+            else
+                printPage(title, document[1], true)
             end
         end
         return true
@@ -501,7 +563,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
                 if not threadFilters[co] or threadFilters[co] == "" or threadFilters[co] == e[1] then
                     local ok, filter = coroutine.resume(co, table.unpack(e, 1, e.n))
                     if not ok then
-                        error(filter)
+                        error(debug.traceback(co, filter):sub(1, 200))
                     elseif coroutine.status(co) == "dead" then
                         dead[#dead + 1] = i
                         threadFilters[co] = nil
