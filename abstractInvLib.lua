@@ -175,7 +175,7 @@ local function optimalTransfer(fromInventory, toInventory, from, amount, toSlot,
         end
         theoreticalAmountMoved = theoreticalAmountMoved + itemsToMove
 
-        -- update our cache to include the predicted transfer
+        -- update destination cache to include the predicted transfer
         if not destinationInfo.item then
             destinationInfo.item = shallowClone(cachedItem.item)
             destinationInfo.item.count = 0
@@ -190,9 +190,9 @@ local function optimalTransfer(fromInventory, toInventory, from, amount, toSlot,
         updatedItem.count = updatedItem.count - itemsToMove
 
         if updatedItem.count == 0 then
-            fromInventory._updateItem(nil, cachedItem.inventory, cachedItem.slot)
+            fromInventory._cacheItem(nil, cachedItem.inventory, cachedItem.slot)
         else
-            fromInventory._updateItem(updatedItem, cachedItem.inventory, cachedItem.slot)
+            fromInventory._cacheItem(updatedItem, cachedItem.inventory, cachedItem.slot)
         end
     end
 
@@ -336,7 +336,7 @@ function abstractInventory(inventories, assumeLimits, logSettings)
         return ...
     end
 
-    ---@type table<string,table<string,CachedItem>>
+    ---@type table<string,table<string,table<CachedItem,CachedItem>>>
     local itemNameNBTLUT = {}
     -- [item.name][nbt][CachedItem] -> CachedItem
 
@@ -474,7 +474,7 @@ function abstractInventory(inventories, assumeLimits, logSettings)
                 -- There's an item in this slot, therefor this slot is not empty
                 emptySlotLUT[inventory][slot] = nil
             end
-            if item.count < (item.maxCount * (cachedItem.capacity / 64)) then
+            if item.count < item.maxCount then
                 -- There's space left in this slot, add it to the cache
                 itemSpaceLUT[item.name] = itemSpaceLUT[item.name] or {}
                 itemSpaceLUT[item.name][nbt] = itemSpaceLUT[item.name][nbt] or {}
@@ -543,6 +543,8 @@ function abstractInventory(inventories, assumeLimits, logSettings)
             for _, i in ipairs(slots) do
                 if listings[i] then
                     cacheItem(listings[i], inventoryName, i)
+                else
+                    cacheItem(nil, inventoryName, i)
                 end
             end
         else
@@ -563,10 +565,112 @@ function abstractInventory(inventories, assumeLimits, logSettings)
                             end
                         end
                     end
+                else
+                    cacheItem(nil, inventoryName, i)
                 end
             end
         end
         return deepCacheFunctions
+    end
+
+    local function doIndexesExist(t, ...)
+        for i, v in ipairs({ ... }) do
+            t = t[v]
+            if not t then
+                return false
+            end
+        end
+        return true
+    end
+
+    ---Check if the internal caches are in a valid state
+    ---@return boolean
+    ---@return string
+    function api.validateCache()
+        -- Validate all cachedItems
+        for gslot, info in ipairs(slotNumberLUT) do
+            local inventory, slot = info.inventory, info.slot
+            local cachedItem = inventorySlotLUT[inventory][slot]
+            if not cachedItem then
+                return false, ("inventorySlotLUT[%s][%d] does not exist!"):format(inventory, slot)
+            end
+            local item = cachedItem.item
+            if item then
+                local name, nbt = item.name, item.nbt or "NONE"
+                if not doIndexesExist(itemNameNBTLUT, name, nbt, cachedItem) then
+                    return false, ("itemNameNBTLUT[%s][%s] is missing an entry!"):format(name, nbt)
+                end
+                if inventorySlotNumberLUT[inventory][slot] ~= gslot then
+                    return false, ("inventorySlotNumberLUT[%s][%d] is invalid!"):format(inventory, slot)
+                end
+                if item.count < 1 then
+                    return false, ("Item with count %d exists!"):format(item.count)
+                elseif item.count > item.maxCount then
+                    return false, ("Item with count higher than max exists! (%d / %d)"):format(item.count, item.maxCount)
+                end
+                if item.count < item.maxCount then
+                    if not doIndexesExist(itemSpaceLUT, name, nbt, cachedItem) then
+                        return false, ("itemSpaceLUT[%s][%s] is missing an entry!"):format(name, nbt)
+                    end
+                else
+                    if doIndexesExist(itemSpaceLUT, name, nbt, cachedItem) then
+                        return false, ("itemSpaceLUT[%s][%s] contains an item it shouldn't!"):format(name, nbt)
+                    end
+                end
+                if (doIndexesExist(emptySlotLUT, inventory, slot) and emptySlotLUT[inventory][slot]) then
+                    return false,
+                        ("emptySlotLut[%s][%d] is true when the slot isn't empty!"):format(inventory, slot)
+                end
+            else
+                if not (doIndexesExist(emptySlotLUT, inventory, slot) and emptySlotLUT[inventory][slot]) then
+                    return false,
+                        ("emptySlotLut[%s][%d] is false when the slot is empty!"):format(inventory, slot)
+                end
+            end
+        end
+        -- Validate that CachedItems aren't where they shouldn't be
+        for name, nbtList in pairs(itemNameNBTLUT) do
+            for nbt, cachedItemList in pairs(nbtList) do
+                for cachedItem in pairs(cachedItemList) do
+                    local item = cachedItem.item
+                    if not item then
+                        return false, ("itemNameNBTLUT[%s][%s] contains empty CachedItem"):format(name, nbt)
+                    end
+                    if item.name ~= name then
+                        return false, ("itemNameNBTLUT[%s][%s] contains item with name %s"):format(name, nbt, item.name)
+                    end
+                    if (item.nbt or "NONE") ~= nbt then
+                        return false, ("itemNameNBTLUT[%s][%s] contains item with nbt %s"):format(name, nbt, item.nbt)
+                    end
+                    if inventorySlotLUT[cachedItem.inventory][cachedItem.slot] ~= cachedItem then
+                        return false, ("itemNameNBTLUT[%s][%s] contains some imaginary CachedItem."):format(name, nbt)
+                    end
+                end
+            end
+        end
+        for name, nbtList in pairs(itemSpaceLUT) do
+            for nbt, cachedItemList in pairs(nbtList) do
+                for cachedItem in pairs(cachedItemList) do
+                    local item = cachedItem.item
+                    if not item then
+                        return false, ("itemSpaceLUT[%s][%s] contains empty CachedItem"):format(name, nbt)
+                    end
+                    if item.name ~= name then
+                        return false, ("itemSpaceLUT[%s][%s] contains item with name %s"):format(name, nbt, item.name)
+                    end
+                    if (item.nbt or "NONE") ~= nbt then
+                        return false, ("itemSpaceLUT[%s][%s] contains item with nbt %s"):format(name, nbt, item.nbt)
+                    end
+                    if item.count == item.maxCount then
+                        return false, ("itemSpaceLUT[%s][%s] contains item with no extra space!"):format(name, nbt)
+                    end
+                    if inventorySlotLUT[cachedItem.inventory][cachedItem.slot] ~= cachedItem then
+                        return false, ("itemSpaceLUT[%s][%s] contains some imaginary CachedItem."):format(name, nbt)
+                    end
+                end
+            end
+        end
+        return true, ""
     end
 
     ---Recache the inventory contents
@@ -575,8 +679,8 @@ function abstractInventory(inventories, assumeLimits, logSettings)
         if type(deep) == "nil" then
             deep = true
         end
-        itemNameNBTLUT, itemSpaceLUT, inventorySlotLUT, inventoryLimit, emptySlotLUT, slotNumberLUT, inventorySlotNumberLUT, tagLUT, deepItemLUT, reservedItemLUT =
-            {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+        itemNameNBTLUT, itemSpaceLUT, defraggableLUT, inventorySlotLUT, inventoryLimit, emptySlotLUT, slotNumberLUT, inventorySlotNumberLUT, tagLUT, deepItemLUT, reservedItemLUT =
+            {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
         local inventoryRefreshers = {}
         local deepCacheFunctions = {}
         for _, inventory in pairs(inventories) do
@@ -663,14 +767,6 @@ function abstractInventory(inventories, assumeLimits, logSettings)
     ---@return integer capacity
     function api._getEmptySpace()
         return getEmptySpace()
-    end
-
-    ---@param item table|nil
-    ---@param inventory string
-    ---@param slot integer
-    ---@return CachedItem
-    function api._updateItem(item, inventory, slot)
-        return cacheItem(item, inventory, slot)
     end
 
     ---@return CachedItem|nil
@@ -791,23 +887,24 @@ function abstractInventory(inventories, assumeLimits, logSettings)
             if not (item and item.item) then
                 return logExit(logUnoptimal, calln, "pushItemsUnoptimal", totalMoved, "NO ITEM")
             end
-            local itemCount = item.item.count
+            local citem = shallowClone(item.item)
+            local itemCount = citem.count
             rep = (itemCount - totalMoved) < amount
             local expectedMove = math.min(amount - totalMoved, 64)
             local remainingItems = math.max(0, itemCount - expectedMove)
-            item.item.count = remainingItems
-            if item.item.count == 0 then
+            citem.count = remainingItems
+            if citem.count == 0 then
                 cacheItem(nil, item.inventory, item.slot)
             else
-                cacheItem(item.item, item.inventory, item.slot)
+                cacheItem(citem, item.inventory, item.slot)
             end
-            local amountMoved = call(item.inventory, "pushItems", targetInventory, item.slot, amount - totalMoved, toSlot)
+            local amountMoved = call(item.inventory, "pushItems", targetInventory, item.slot, expectedMove, toSlot)
             totalMoved = totalMoved + amountMoved
             refreshItem(item)
             if options.itemMovedCallback then
                 options.itemMovedCallback()
             end
-            if amountMoved < itemCount then
+            if amountMoved < expectedMove then
                 return logExit(logUnoptimal, calln, "pushItemsUnoptimal", totalMoved, "TARGET FULL")
             end
         end
@@ -916,7 +1013,7 @@ function abstractInventory(inventories, assumeLimits, logSettings)
                 options.itemMovedCallback()
             end
             itemsPulled = itemsPulled + moved
-            if moved > 0 then
+            if moved > 0 and not toSlot then
                 defragItem(movedItem.item.name, movedItem.item.nbt)
             end
             if moved < limit then
