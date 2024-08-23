@@ -176,37 +176,58 @@ end)
 local selectedModem
 local selectedHost
 local completion = require "cc.completion"
-local printButton = mbar.button("Print", function(entry)
+local function selectModem()
     if #modems == 0 then
         mbar.popup("No Modems!", "To print you need a modem connected.", { "Close" }, 20)
-        return
+        return false
     end
     if #modems > 1 and not selectedModem then
         local selection = mbar.popupRead("Modem?", 20, "Enter the modem to use for printer lookup", function(str)
             return completion.choice(str, modems, false)
         end)
         if not selection then
-            return
+            return false
         end
         if not peripheral.wrap(selection) then
-            return
+            return false
         end
         selectedModem = selection
     elseif not selectedModem then
         selectedModem = modems[1]
     end
-    rednet.open(selectedModem)
+    return true
+end
+local hosts = {}
+local hostnames = {}
+local function lookupPrinters()
+    hosts = { rednet.lookup(spclib.PROTOCOL) }
+    for i, v in ipairs(hosts) do
+        local name = spclib.printerInfo(v)
+        hostnames[i] = name
+    end
+end
+local function selectHost()
     if not selectedHost then
-        local hosts = { rednet.lookup(spclib.PROTOCOL) }
+        lookupPrinters()
         if #hosts == 0 then
             mbar.popup("No Printers!", "Found no printers!", { "Close" }, 15)
-            return
+            return false
         elseif #hosts > 1 then
             -- TODO
             error("EEEE")
         else
             selectedHost = hosts[1] --[[@as number]]
         end
+    end
+    return true
+end
+local printButton = mbar.button("Print!", function(entry)
+    if not selectModem() then
+        return
+    end
+    rednet.open(selectedModem)
+    if not selectHost() then
+        return
     end
     local copies = tonumber(mbar.popupRead("Copies?", 15, nil, nil, "1"))
     if not copies then
@@ -230,6 +251,28 @@ local printButton = mbar.button("Print", function(entry)
     mbar.popup("Printing!", "The document is now printing!", { "Ok" }, 15)
 end)
 
+local hostSelectMenu = mbar.radialMenu(hostnames, function(self)
+    selectedHost = hosts[self.selected]
+end)
+hostSelectMenu.selected = 0
+local hostSelectButton = mbar.button("Host", nil, hostSelectMenu)
+
+local modemSelectMenu = mbar.radialMenu(modems, function(self)
+    if selectedModem then
+        rednet.close(selectedModem)
+    end
+    selectedModem = modems[self.selected]
+    rednet.open(selectedModem)
+    lookupPrinters()
+    hostSelectMenu.updateOptions(hostnames)
+    hostSelectMenu.selected = 0
+    selectedHost = nil
+end)
+modemSelectMenu.selected = 0
+local modemSelectButton = mbar.button("Modem", nil, modemSelectMenu)
+
+local printMenu = mbar.buttonMenu { modemSelectButton, hostSelectButton, printButton }
+local printMenuButton = mbar.button("Print", nil, printMenu)
 
 local quitButton = mbar.button("Quit", function()
     if not unsavedDocumentPopup() then
@@ -247,7 +290,7 @@ local filesm = mbar.buttonMenu {
     saveButton,
     saveAsButton,
     mbar.divider(),
-    printButton,
+    printMenuButton,
     quitButton
 }
 

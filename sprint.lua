@@ -238,7 +238,8 @@ local function handleRednet(id, msg)
     elseif msg.type == "INFO" then
         local inkLevels = p.getInkLevels()
         local paper, string, leather = p.getPaperCount()
-        rednet.send(id, { type = "INFO", ink = inkLevels, paper = paper, string = string, leather = leather },
+        rednet.send(id,
+            { type = "INFO", ink = inkLevels, paper = paper, string = string, leather = leather, name = hostname },
             network.PROTOCOL)
     end
 end

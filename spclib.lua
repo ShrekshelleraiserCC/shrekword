@@ -43,19 +43,20 @@ function spclib.printDocument(host, document, copies, book)
 end
 
 ---@param host integer
----@return table<string,integer>? levels
+---@return string? name
+---@return table<string,integer> levels
 ---@return integer paper
 ---@return integer string
 ---@return integer leather
-function spclib.printerStock(host)
+function spclib.printerInfo(host)
     rednet.send(host, {
         type = "INFO"
     }, spclib.PROTOCOL)
     local id, msg = rednet.receive(spclib.PROTOCOL, 1)
     if not (id and msg) then
-        return nil, 0, 0, 0
+        return nil, {}, 0, 0, 0
     end
-    return msg.inkLevels, msg.paper, msg.string, msg.leather
+    return msg.name, msg.inkLevels, msg.paper, msg.string, msg.leather
 end
 
 return spclib
