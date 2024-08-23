@@ -440,7 +440,7 @@ function sdoc.render(doc, a, b, renderNewlines, renderNewpages, renderControl)
         a, b = math.min(a, b), math.max(a, b)
     end
     local blit = {}
-    local lastSeenColor = "0"
+    local lastSeenColor = "f"
     local lineEndsInHighlight = false
     local lineStartsInHighlight = false
     local y = 1
