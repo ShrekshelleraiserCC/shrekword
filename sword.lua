@@ -445,20 +445,6 @@ bar.shortcut(newButton, keys.n, true)
 bar.shortcut(openButton, keys.o, true)
 bar.shortcut(selectAllButton, keys.a, true)
 
----Writes the string s to the a, b area of the document, updating the selection as necessary
-function writeToDocument(s)
-    if a and b then
-        a, b = math.min(a, b), math.max(a, b)
-        documentString = document:remove(a, b)
-        document = sdoc.decode(documentString)
-        a, b = nil, nil
-    end
-    documentString = document:insertAt(cursor, s, colorMenu.selectedChar)
-    cursor = cursor + #s
-    document = sdoc.decode(documentString)
-    documentContentUpdate()
-end
-
 ---@param idx integer
 ---@return integer x
 ---@return integer y
@@ -473,6 +459,31 @@ local function documentIndexToScreen(idx)
     assert(lineX, ("%d, %d, %d"):format(idx, info.page, info.line))
     local x = info.col + pageX + lineX - 2
     return x, y
+end
+
+local function moveScreenToFitCursor()
+    local x, y = documentIndexToScreen(cursor)
+    if y < 3 then
+        scrollOffset = scrollOffset - (3 - y)
+    elseif y > th - 1 then
+        scrollOffset = scrollOffset + y - th + 1
+    end
+end
+
+---Writes the string s to the a, b area of the document, updating the selection as necessary
+function writeToDocument(s)
+    if a and b then
+        a, b = math.min(a, b), math.max(a, b)
+        documentString = document:remove(a, b)
+        document = sdoc.decode(documentString)
+        cursor = a
+        a, b = nil, nil
+    end
+    documentString = document:insertAt(cursor, s, colorMenu.selectedChar)
+    document = sdoc.decode(documentString)
+    cursor = math.min(cursor + #s, #document.indicies)
+    moveScreenToFitCursor()
+    documentContentUpdate()
 end
 
 local function render()
@@ -581,16 +592,6 @@ local alignmentReverseLUT = {
     c = 2,
     r = 3
 }
-
-local function moveScreenToFitCursor()
-    local x, y = documentIndexToScreen(cursor)
-    if y < 3 then
-        scrollOffset = scrollOffset - (3 - y)
-    elseif y > th - 1 then
-        scrollOffset = scrollOffset + y - th + 1
-    end
-end
-
 local function moveCursor(idx)
     cursor = math.max(1, math.min(#document.editable.content[1] + 1, idx))
     local info = document.indicies[cursor]
