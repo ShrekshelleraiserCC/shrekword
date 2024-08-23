@@ -217,7 +217,7 @@ local function intelligentCorner(menu)
             dev.setCursorPos(x, y)
             dev.blit("\149", bgline:sub(x, x), cblit)
         end
-        if sy < menu.y + menu.height then
+        if not menu.parent.parent.bar and sy < menu.y + menu.height and menu.y + menu.height > menu.parent.parent.y + menu.parent.parent.height then
             local y = menu.y + sy - 2
             local x = menu.x - 1
             _, _, bgline = getLine(y)
