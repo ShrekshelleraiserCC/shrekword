@@ -1,8 +1,8 @@
-local sdoc = require("sdoc")
-local mbar = require("mbar")
-local printer = require("printer")
-local scolors = require("scolors")
-local network = require("sprint_network")
+local sdoc = require("libs.sdoc")
+local mbar = require("libs.mbar")
+local printer = require("libs.printer")
+local scolors = require("libs.scolors")
+local network = require("libs.sprint_network")
 
 
 local wirelessModem = peripheral.find("modem", function(name, wrapped)

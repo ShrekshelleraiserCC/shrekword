@@ -10,7 +10,7 @@ local printer = {}
 -- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-local abstractInventory = require "abstractInvLib"
+local abstractInventory = require "libs.abstractInvLib"
 
 local PAPER_ITEM = "minecraft:paper"
 local STRING_ITEM = "minecraft:string"
@@ -162,7 +162,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             availableTurtles[#availableTurtles + 1] = lname
             totalTurtles = 1
         end
-        local network = require("sprint_network")
+        local network = require("libs.sprint_network")
         network.wiredModem.transmit(MODEM_PORT, MODEM_PORT, {
             type = "PING",
             destination = "*",
@@ -437,7 +437,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         9, 10, 11
     }
     local function tellTurtleToCraftAndWait(name)
-        local network = require("sprint_network")
+        local network = require("libs.sprint_network")
         local turtleID = turtleIDs[name]
         network.wiredModem.transmit(network.MODEM_PORT, network.MODEM_PORT, {
             type = "CRAFT",

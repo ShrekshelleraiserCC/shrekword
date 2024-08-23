@@ -1,6 +1,6 @@
-local sdoc = require("sdoc")
-local mbar = require("mbar")
-local spclib = require("spclib")
+local sdoc = require("libs.sdoc")
+local mbar = require("libs.mbar")
+local spclib = require("libs.spclib")
 
 local version = "INDEV"
 local buildVersion = '##VERSION'
@@ -298,6 +298,9 @@ local printMenuButton = mbar.button("Print", nil, printMenu)
 local quitButton = mbar.button("Quit", function()
     if not unsavedDocumentPopup() then
         return
+    end
+    if selectedModem then
+        rednet.close(selectedModem)
     end
     running = false
     return true

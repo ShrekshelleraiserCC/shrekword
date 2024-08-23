@@ -1,4 +1,4 @@
-local sdoc = require "sdoc"
+local sdoc = require "libs.sdoc"
 
 local args = { ... }
 if #args < 1 then
