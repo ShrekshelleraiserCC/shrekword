@@ -176,11 +176,15 @@ local function intelligentCorner(menu)
         end
         for dx = sx, menu.width do
             local x = menu.x + dx - 1
-            dev.setCursorPos(x, menu.y - 1)
-            dev.blit("\143", bgline:sub(x, x), cblit)
+            if x <= tw and x >= 1 then
+                dev.setCursorPos(x, menu.y - 1)
+                dev.blit("\143", bgline:sub(x, x), cblit)
+            end
         end
         local x = menu.x + menu.width
-        dev.blit("\144", cblit, bgline:sub(x, x))
+        if x < tw then
+            dev.blit("\144", cblit, bgline:sub(x, x))
+        end
     end
     if not menu.parent.parent.bar and menu.y < menu.parent.parent.y then
         local y = menu.parent.parent.y - 1
@@ -225,18 +229,19 @@ local function intelligentCorner(menu)
                 dev.setCursorPos(x, y)
                 dev.blit("\148", bgline:sub(x, x), cblit)
             end
-            y = menu.y + menu.height
-            if y <= th then
-                _, _, bgline = getLine(y)
-                dev.setCursorPos(x, y)
-                dev.blit("\130", cblit, bgline:sub(x, x))
-            end
         elseif not menu.parent.parent.bar and menu.y + menu.height < menu.parent.parent.y + menu.parent.parent.height then
             local x = menu.x
             local y = menu.y + menu.height
             _, _, bgline = getLine(y)
             dev.setCursorPos(x, y)
             dev.blit("\151", cblit, bgline:sub(x, x))
+        end
+        local x = menu.x - 1
+        local y = menu.y + menu.height
+        if y <= th and x >= 1 and x <= tw then
+            _, _, bgline = getLine(y)
+            dev.setCursorPos(x, y)
+            dev.blit("\130", cblit, bgline:sub(x, x))
         end
     end
     color(ofg, obg)
@@ -475,6 +480,9 @@ function mbar.radialMenu(options, callback)
             width = math.max(width, #v + 3)
         end
         menu.width = width
+        if menu.parent then
+            menu.parent.parent:updateSize()
+        end
     end
     updateSize()
 

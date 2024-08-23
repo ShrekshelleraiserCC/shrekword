@@ -176,6 +176,7 @@ end)
 local selectedModem
 local selectedHost
 local completion = require "cc.completion"
+local setModem, setHost
 local function selectModem()
     if #modems == 0 then
         mbar.popup("No Modems!", "To print you need a modem connected.", { "Close" }, 20)
@@ -191,9 +192,9 @@ local function selectModem()
         if not peripheral.wrap(selection) then
             return false
         end
-        selectedModem = selection
+        setModem(selection)
     elseif not selectedModem then
-        selectedModem = modems[1]
+        setModem(modems[1])
     end
     return true
 end
@@ -214,9 +215,10 @@ local function selectHost()
             return false
         elseif #hosts > 1 then
             -- TODO
-            error("EEEE")
+            mbar.popup("Select a Host", "Select a host from Print > Host.", { "Ok" }, 20)
+            return false
         else
-            selectedHost = hosts[1] --[[@as number]]
+            setHost(hosts[1])
         end
     end
     return true
@@ -252,21 +254,40 @@ local printButton = mbar.button("Print!", function(entry)
 end)
 
 local hostSelectMenu = mbar.radialMenu(hostnames, function(self)
-    selectedHost = hosts[self.selected]
+    setHost(hosts[self.selected])
 end)
 hostSelectMenu.selected = 0
 local hostSelectButton = mbar.button("Host", nil, hostSelectMenu)
-
-local modemSelectMenu = mbar.radialMenu(modems, function(self)
+local modemSelectMenu
+function setModem(modem)
     if selectedModem then
         rednet.close(selectedModem)
     end
-    selectedModem = modems[self.selected]
+    selectedModem = modem
     rednet.open(selectedModem)
     lookupPrinters()
     hostSelectMenu.updateOptions(hostnames)
     hostSelectMenu.selected = 0
+    for i, v in ipairs(modems) do
+        if v == modem then
+            modemSelectMenu.selected = i
+            break
+        end
+    end
     selectedHost = nil
+end
+
+function setHost(host)
+    selectedHost = host
+    for i, v in ipairs(hosts) do
+        if v == host then
+            hostSelectMenu.selected = i
+        end
+    end
+end
+
+modemSelectMenu = mbar.radialMenu(modems, function(self)
+    setModem(modems[self.selected])
 end)
 modemSelectMenu.selected = 0
 local modemSelectButton = mbar.button("Modem", nil, modemSelectMenu)
