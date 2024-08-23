@@ -217,7 +217,7 @@ local function intelligentCorner(menu)
             dev.setCursorPos(x, y)
             dev.blit("\149", bgline:sub(x, x), cblit)
         end
-        if sy < menu.height then
+        if sy < menu.y + menu.height then
             local y = menu.y + sy - 2
             local x = menu.x - 1
             _, _, bgline = getLine(y)
@@ -462,18 +462,21 @@ end
 ---@param callback fun(self:RadialMenu)?
 ---@return RadialMenu
 function mbar.radialMenu(options, callback)
-    ---@type RadialMenu
+    ---@class RadialMenu : Menu
     local menu = mbar.absMenu()
     menu.options = options
     menu.selected = 1
     menu.callback = callback
 
-    local width = 1
-    menu.height = #menu.options
-    for _, v in ipairs(menu.options) do
-        width = math.max(width, #v + 3)
+    local function updateSize()
+        local width = 1
+        menu.height = #menu.options
+        for _, v in ipairs(menu.options) do
+            width = math.max(width, #v + 3)
+        end
+        menu.width = width
     end
-    menu.width = width
+    updateSize()
 
     function menu.render(depth)
         local ofg, obg = color()
@@ -498,6 +501,12 @@ function mbar.radialMenu(options, callback)
             menu.callback(menu)
         end
         return y
+    end
+
+    function menu.updateOptions(options)
+        menu.options = options
+        menu.selected = math.min(menu.selected, #options)
+        updateSize()
     end
 
     return menu
