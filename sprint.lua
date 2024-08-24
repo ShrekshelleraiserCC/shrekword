@@ -11,12 +11,6 @@ end) --[[@as Modem?]]
 
 
 local hostname = "TEST"
-local rednetEnabled = false
-if wirelessModem then
-    rednet.open(peripheral.getName(wirelessModem))
-    rednet.host(network.PROTOCOL, hostname)
-    rednetEnabled = true
-end
 
 local version = "INDEV"
 local buildVersion = '##VERSION'
@@ -24,10 +18,89 @@ local buildVersion = '##VERSION'
 local tw, th = term.getSize()
 local win = window.create(term.current(), 1, 1, tw, th)
 
+local function saveList(fn, t)
+    local f = assert(fs.open(fn, "w"))
+    for i, v in ipairs(t) do
+        f.writeLine(v)
+    end
+    f.close()
+end
+local function loadList(fn)
+    local t = {}
+    local f = assert(fs.open(fn, "r"))
+    repeat
+        local value = f.readLine()
+        t[#t + 1] = value
+    until not value
+    f.close()
+    return t
+end
+
+local WORKSPACE_CHEST_FN = "workspace.chests"
+local STOCKPILE_CHEST_FN = "stockpile.chests"
+local OUTPUT_CHEST_FN = "output.chests"
+
+local chestList = {}
+peripheral.find("inventory", function(name, wrapped)
+    chestList[#chestList + 1] = name
+    return true
+end)
+
+local chestCompletion = function(str)
+    return require("cc.completion").choice(str, chestList, false)
+end
+
+local function getList(str)
+    local t = {}
+    print(str)
+    print("Leave blank to finish.")
+    while true do
+        term.write("? ")
+        local value = read(nil, nil, chestCompletion)
+        if value == "" then
+            term.write("Enter again to exit: ")
+            value = read()
+            if value == "" then
+                return t
+            end
+        elseif peripheral.isPresent(value) then
+            t[#t + 1] = value
+        end
+    end
+end
+settings.define("sprint.hostname", { type = "string", description = "Rednet hostname" })
+if not settings.get("sprint.hostname") then
+    print("Enter a hostname:")
+    local hn = read()
+    settings.set("sprint.hostname", hn)
+    settings.save()
+end
+hostname = settings.get("sprint.hostname")
+if not fs.exists(WORKSPACE_CHEST_FN) then
+    local l = getList("Enter inventories to use as a workspace:")
+    saveList(WORKSPACE_CHEST_FN, l)
+end
+if not fs.exists(STOCKPILE_CHEST_FN) then
+    local l = getList("Enter inventories to use for storage:")
+    saveList(STOCKPILE_CHEST_FN, l)
+end
+if not fs.exists(OUTPUT_CHEST_FN) then
+    print("Enter inventory to use for output:")
+    term.write("? ")
+    local c = read(nil, nil, chestCompletion)
+    saveList(OUTPUT_CHEST_FN, { c })
+end
+local rednetEnabled = false
+if wirelessModem then
+    rednet.open(peripheral.getName(wirelessModem))
+    rednet.host(network.PROTOCOL, hostname)
+    rednetEnabled = true
+end
+
 local p = printer.printer(
-    { "minecraft:chest_3", "minecraft:chest_4" },
-    { "minecraft:chest_1", "minecraft:chest_2" },
-    "minecraft:chest_0"
+    loadList(STOCKPILE_CHEST_FN),
+    loadList(WORKSPACE_CHEST_FN),
+    loadList(OUTPUT_CHEST_FN)[1]
 )
 
 local bar
