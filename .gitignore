@@ -7,3 +7,5 @@ test.lua
 build/sword.lua
 build/sprint.lua
 *.log
+.settings
+*.chests
