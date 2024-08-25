@@ -777,7 +777,7 @@ function mbar.setWindow(win)
     dev = win
 end
 
-local function fill(x, y, w, h)
+function mbar.fill(x, y, w, h)
     local s = (" "):rep(w)
     for i = 0, h - 1 do
         dev.setCursorPos(x, y + i)
@@ -809,13 +809,13 @@ function mbar.popup(title, text, options, w)
     local h = #s + 5
     local x, y = math.floor((tw - w) / 2), math.max(3, math.floor((th - h) / 2))
     local optionY = y + h - 2
-    fill(x, y, w, h)
+    mbar.fill(x, y, w, h)
     for i, v in ipairs(s) do
         dev.setCursorPos(x + 1, y + i + 1)
         dev.write(v)
     end
     color(fg, bg)
-    fill(x, y, w, 1)
+    mbar.fill(x, y, w, 1)
     local tx = math.floor((tw - #title) / 2)
     dev.setCursorPos(tx, y)
     dev.write(title)
@@ -859,18 +859,18 @@ function mbar.popupRead(title, w, text, completion, default)
         local s = require("cc.strings").wrap(text, w - 2)
         h = #s + 7
         x, y = math.floor((tw - w) / 2), math.floor((th - h) / 2)
-        fill(x, y, w, h)
+        mbar.fill(x, y, w, h)
         for i, v in ipairs(s) do
             dev.setCursorPos(x + 1, y + i + 1)
             dev.write(v)
         end
     else
         x, y = math.floor((tw - w) / 2), math.floor((th - h) / 2)
-        fill(x, y, w, h)
+        mbar.fill(x, y, w, h)
     end
 
     color(fg, bg)
-    fill(x, y, w, 1)
+    mbar.fill(x, y, w, 1)
     local tx = math.floor((tw - #title) / 2)
     dev.setCursorPos(tx, y)
     dev.write(title)

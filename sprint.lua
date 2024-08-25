@@ -292,8 +292,20 @@ local function handleRednet(id, msg)
             rednet.send(id, { type = "DOCINFO", result = false, reason = err }, network.PROTOCOL)
             return
         end
+        local ink = p.getRequiredInk(toprint)
         local can, reason = p.canPrint(toprint, msg.copies, msg.asBook)
-        rednet.send(id, { type = "DOCINFO", result = can, reason = reason }, network.PROTOCOL)
+        local paper, string, leather = p.getRequiredPaper(toprint, msg.copies, msg.asBook)
+        rednet.send(id,
+            {
+                type = "DOCINFO",
+                result = can,
+                reason = reason,
+                ink = ink,
+                paper = paper,
+                string = string,
+                leather =
+                    leather
+            }, network.PROTOCOL)
     elseif msg.type == "PRINT" then
         local ok, document = pcall(sdoc.decode, msg.document)
         if not ok then

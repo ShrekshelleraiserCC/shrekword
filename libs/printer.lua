@@ -389,6 +389,22 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         return paper, string, leather
     end
 
+    ---@param document printablePage[]
+    ---@param copies integer
+    ---@param book boolean?
+    ---@return integer paper
+    ---@return integer string
+    ---@return integer leather
+    local function getRequiredPaper(document, copies, book)
+        local requiredPaper = #document * copies
+        local requiredString = math.ceil(#document / 6) * copies
+        local requiredLeather = book and copies or 0
+        if #document == 1 then
+            requiredLeather = 0
+        end
+        return requiredPaper, requiredString, requiredLeather
+    end
+
     local DOCUMENT_LENGTH_LIMIT = 16
     ---Check if we can print a document
     ---@param document printablePage[]
@@ -401,20 +417,15 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             return false, ("Too many pages! %d of max %d."):format(#document, DOCUMENT_LENGTH_LIMIT)
         end
         local paper, string, leather = getPaperCount()
-        local requiredPaper = #document * copies
+        local requiredPaper, requiredString, requiredLeather = getRequiredPaper(document, copies, book)
         if requiredPaper > paper then
             return false, ("Not enough paper.\nHave %d of %d."):format(paper, requiredPaper)
         end
-        local requiredString = math.ceil(#document / 6) * copies
         if #document == 1 then
             requiredString = 0
         end
         if requiredString > string then
             return false, ("Not enough string.\nHave %d of %d."):format(string, requiredString)
-        end
-        local requiredLeather = book and copies or 0
-        if #document == 1 then
-            requiredLeather = 0
         end
         if requiredLeather > leather then
             return false, ("Not enough leather.\nHave %d of %d."):format(leather, copies)
@@ -615,7 +626,8 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         turtleUsage = turtleUsage,
         printerUsage = printerUsage,
         threadCount = threadCount,
-        pingTurtles = pingTurtles
+        pingTurtles = pingTurtles,
+        getRequiredPaper = getRequiredPaper,
     }
     return colorPrinter
 end

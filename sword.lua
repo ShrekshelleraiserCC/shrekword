@@ -1,6 +1,7 @@
 local sdoc = require("libs.sdoc")
 local mbar = require("libs.mbar")
 local spclib = require("libs.spclib")
+local scolors = require("libs.scolors")
 
 local version = "INDEV"
 local buildVersion = '##VERSION'
@@ -223,6 +224,94 @@ local function selectHost()
     end
     return true
 end
+-- 14 wide, 6 tall
+local function drawInkRequirements(x, y, ink)
+    win.setTextColor(colors.gray)
+    mbar.box(x, y, 12, 4)
+    for i = 0, 15 do
+        local color = 2 ^ i
+        local ch = colors.toBlit(color)
+        local level = ink[ch] or 0
+        local dx = (i % 4) * 3
+        local dy = math.floor(i / 4)
+        win.setCursorPos(x + dx, y + dy)
+        local s = ("%3d"):format(level)
+        if level > 999 then
+            s = "+++"
+        end
+        win.blit(s, scolors.contrastBlitLut[ch]:rep(3), ch:rep(3))
+    end
+end
+local function color(fg, bg)
+    local ofg = win.getTextColor()
+    local obg = win.getBackgroundColor()
+    win.setTextColor(fg or ofg)
+    win.setBackgroundColor(bg or obg)
+    return ofg, obg
+end
+---@param ink table<string,number>
+---@param paper integer
+---@param string integer
+---@param leather integer
+---@return boolean
+local function promptPrint(ink, paper, string, leather)
+    local w = 14 + 8
+    local h = 6 + 3
+    local x, y = math.floor((tw - w) / 2), math.floor((th - h) / 2)
+    win.setTextColor(colors.gray)
+    mbar.corner(x, y, w, h, true)
+    local fg, bg = colors.white, colors.gray
+    local hfg, hbg = colors.black, colors.white
+    local mfg, mbg = colors.black, colors.lightGray
+    local ofg, obg = color(mfg, mbg)
+    mbar.fill(x, y, w, h)
+    win.setTextColor(colors.white)
+    win.setBackgroundColor(colors.gray)
+    mbar.fill(x, y, w, 1)
+    local title = "Print?"
+    local tx = math.floor((tw - #title) / 2)
+    win.setCursorPos(tx, y)
+    win.write("Print?")
+    drawInkRequirements(x + 1, y + 2, ink)
+    win.setTextColor(colors.black)
+    win.setBackgroundColor(colors.lightGray)
+    win.setCursorPos(x + 15, y + 2)
+    win.blit("\130", "8", "0")
+    win.write((" %3d"):format(paper))
+    win.setCursorPos(x + 15, y + 4)
+    win.blit("@", "0", "8")
+    win.write((" %3d"):format(string))
+    win.setCursorPos(x + 15, y + 5)
+    -- win.blit("\132\136", "88", "cc")
+    win.blit("\164", "c", "8")
+    win.write((" %3d"):format(leather))
+    local optionX = x + w - 12
+    local optionY = y + h - 2
+    local options = { "No", "Yes" }
+    local optionPos = {}
+    for i, v in ipairs(options) do
+        color(hfg, hbg)
+        win.setCursorPos(optionX, optionY)
+        win.write(" " .. v .. " ")
+        color(bg, fg)
+        mbar.corner(optionX, optionY, #v + 2, 1, true)
+        optionPos[i] = optionX
+        optionX = optionX + #v + 3
+    end
+    color(bg, obg)
+    mbar.corner(x, y, w, h, true)
+    color(ofg, obg)
+    while true do
+        local _, _, x, y = os.pullEvent("mouse_click")
+        if y == optionY and x < optionX then
+            for i = #options, 1, -1 do
+                if x >= optionPos[i] then
+                    return i == 2
+                end
+            end
+        end
+    end
+end
 local printButton = mbar.button("Print!", function(entry)
     if not selectModem() then
         return
@@ -236,13 +325,13 @@ local printButton = mbar.button("Print!", function(entry)
         return
     end
     local book = mbar.popup("Books?", "Bundle each copy into a book", { "No", "Yes" }, 20) == 2
-    local ok, status, ink = spclib.aboutDocument(selectedHost, documentString, copies, book)
+    local ok, status, ink, paper, string, leather = spclib.aboutDocument(selectedHost, documentString, copies, book)
     if not ok then
         mbar.popup("Cannot Print", status, { "Close" }, 20)
         return
     end
-    local choice = mbar.popup("Print?", "Document will consume:", { "No", "Yes" }, 20)
-    if choice == 1 then
+    local doPrint = promptPrint(ink, paper, string, leather)
+    if not doPrint then
         return
     end
     ok, status = spclib.printDocument(selectedHost, documentString, copies, book)
