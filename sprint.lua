@@ -12,7 +12,7 @@ end) --[[@as Modem?]]
 
 local hostname = "TEST"
 
-local version = "INDEV"
+local version = "1.0.0"
 local buildVersion = '##VERSION'
 
 local tw, th = term.getSize()

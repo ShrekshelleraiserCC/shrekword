@@ -3,7 +3,7 @@ local mbar = require("libs.mbar")
 local spclib = require("libs.spclib")
 local scolors = require("libs.scolors")
 
-local version = "INDEV"
+local version = "1.0.0"
 local buildVersion = '##VERSION'
 
 local running = true
