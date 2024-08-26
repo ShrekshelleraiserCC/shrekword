@@ -113,7 +113,7 @@ end
 ---@field pages table<integer,integer> inserted page markers
 
 local headerMatch = "^shrekdoc%-v(%d%d)w(%d%d)h(%d%d)m([RS]):"
-local headerExample = "shrekdoc-v00w00h00mR:"
+local headerExample = "shrekdoc-v01w00h00mR:"
 
 ---@param str string
 ---@return string
