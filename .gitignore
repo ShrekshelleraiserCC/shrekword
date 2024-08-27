@@ -6,6 +6,7 @@ billboard.lua
 test.lua
 build/sword.lua
 build/sprint.lua
+build/sview.lua
 *.log
 .settings
 *.chests

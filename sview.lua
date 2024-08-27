@@ -2,7 +2,7 @@ local sdoc = require "libs.sdoc"
 
 local args = { ... }
 if #args < 1 then
-    print("viewer <fn>")
+    print("sview <fn>")
     return
 end
 
@@ -12,16 +12,6 @@ f.close()
 
 local document = sdoc.decode(sdoc.decode(str):remove(5, 6))
 local blit = sdoc.render(document)
-
-sdoc.dump("1", document)
-sdoc.dump("2", blit)
-sdoc.dump("3", sdoc.encode(document))
-
--- local edited = document:remove(3, 5)
--- sdoc.dump("4", edited)
--- document = sdoc.decode(edited)
--- sdoc.dump("5", document)
--- blit = sdoc.render(document)
 
 local page = 1
 
@@ -37,6 +27,9 @@ local function draw()
     local w, h = win.getSize()
     win.setVisible(false)
     win.clear()
+    if document.editable.title then
+        centerWrite(1, document.editable.title)
+    end
     centerWrite(h, ("Page %d of %d"):format(page, #document.pages))
     sdoc.blitOn(blit, page, nil, nil, win)
     win.setVisible(true)
@@ -53,5 +46,7 @@ while true do
         end
     elseif e == "mouse_scroll" then
         page = math.max(1, math.min(#document.pages, page + key))
+    elseif e == "term_resize" then
+        win.reposition(1, 1, term.getSize())
     end
 end
