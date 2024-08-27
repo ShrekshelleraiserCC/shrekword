@@ -10,7 +10,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ]]
 
-mbar._VERSION = "1.1.0"
+mbar._VERSION = "1.1.1"
 ---@alias menuCallback fun(entry:Button):boolean?
 ---@alias shortcut {[number]:number,button:Button} map from last key to modifiers like {s = {"ctrl"}}
 
@@ -98,7 +98,7 @@ function mbar.corner(x, y, w, h, shadow)
     local cblit = colors.toBlit(cfg)
 
     local tw, th = dev.getSize()
-    if y + h - 1 <= th then
+    if y + h <= th then
         local _, _, bgline = getLine(y + h)
         local sw = math.min(w, tw - x + 1)
         dev.setCursorPos(x, y + h)
@@ -121,7 +121,7 @@ function mbar.corner(x, y, w, h, shadow)
                 dev.blit("\149", cblit, bgline:sub(x + w, x + w))
             end
         end
-        if shadow then
+        if shadow and y <= th then
             dev.setCursorPos(x + w, y)
             local _, _, bgline = getLine(y)
             dev.blit("\148", cblit, bgline:sub(x + w, x + w))
