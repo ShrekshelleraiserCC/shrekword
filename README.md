@@ -1,10 +1,28 @@
 # ShrekWord and ShrekPrint
 ShrekWord is a ComputerCraft "word"-like document editing program. It includes a nice menu bar, support for alignments, and text colors. It also includes built in support for printing to a printer running ShrekPrint over rednet.
 
-ShrekPrint is my high speed 16 color printing software designed for use with my ShrekDoc format. Install it on an advanced crafty turtle connected to a network with chests and printers. When running it for the first time you will be prompted for various things. The hostname is whatever you want the printer to identify as on rednet. The workspace chests are chests to use for intermediate storage of documents while they're being printed. The stockpile chests are, well, a stockpile of resources like ink and paper. And the output is a single inventory which finished documents (and scraps when the printer is emptied) will be deposited into. Attach as many printers as you'd like, and optionally additional crafty turtles running `spcrafter.lua`.
-
 ## Installation
-Download the latest versions of ShrekWord and ShrekPrint from the releases tab.
+Download the latest versions of ShrekWord and ShrekPrint from the releases tab. See the ShrekPrint section for specifics on setting it up.
+
+## ShrekPrint Setup
+ShrekPrint is my high speed 16 color printing software designed for use with my ShrekDoc format. Install it on an advanced crafty turtle connected to a network with (at least 3) chests and (at least 1) printer(s).
+
+When running it for the first time you will be prompted for various things.
+* The hostname is whatever you want the printer to identify as on rednet.
+* The rednet modem should be the modem you want to host the rednet print server over, this can be a wireless or wired modem. Though keep in mind if you use a wireless modem *anybody* on the server can see and print to your printer.
+* The workspace chests are chests to use for intermediate storage of documents while they're being printed.
+* The stockpile chests are, well, a stockpile of resources like ink and paper.
+* The output is a single inventory which finished documents (and scraps when the printer is emptied) will be deposited into.
+
+Do NOT use the same inventory for multiple categories. All inventories and printers MUST be on the same wired network. Here's an exmaple of how networks are determined:
+![Network Demo Image](network_demo.png)
+
+Attach as many printers as you'd like, and optionally additional crafty turtles running `spcrafter.lua`.
+
+### ShrekPrint Settings
+After you go through the first time setup your configurations are saved to various files. The inventory lists are stored in `output.chests`, `stockpile.chests`, and `workspace.chests`. Keep in mind that the OUTPUT inventory can ONLY be ONE inventory, it cannot be a cluster like the others.
+
+Your hostname and rednet modem configurations are saved using the CC `settings` API. They are `sprint.hostname` and `sprint.modem` respectively. 
 
 ## ShrekDoc
 ShrekDoc is a new ComputerCraft document format that I have created. A document is any string with a header of the format `shrekdoc-v01w00h00mR:`, where there are three 2 digit numbers representing the version (v), width (w), and height (h) of the document. There is also `mR` or `mS`, which represents "raw mode" and "serialized mode" for the document. In raw mode the data is interpreted as is, but in serialized mode anything following the header is passed into `textutils.unserialize` before decoding. This is useful for using lua escape sequences for the control character (`shrekdoc-v01w25h21mS"Hello \160caWorld!\160r"`), but any documents saved using ShrekWord will be saved in raw mode.

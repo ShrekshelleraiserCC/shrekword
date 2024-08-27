@@ -5,14 +5,10 @@ local scolors = require("libs.scolors")
 local network = require("libs.sprint_network")
 
 
-local wirelessModem = peripheral.find("modem", function(name, wrapped)
-    return wrapped.isWireless()
-end) --[[@as Modem?]]
-
-
+local rednetModem
 local hostname = "TEST"
 
-local version = "1.0.1"
+local version = "1.0.2"
 local buildVersion = '##VERSION'
 
 local tw, th = term.getSize()
@@ -69,6 +65,7 @@ local function getList(str)
     end
 end
 settings.define("sprint.hostname", { type = "string", description = "Rednet hostname" })
+settings.define("sprint.modem", { type = "string", description = "Modem to open rednet on" })
 if not settings.get("sprint.hostname") then
     print("Enter a hostname:")
     local hn = read()
@@ -76,6 +73,24 @@ if not settings.get("sprint.hostname") then
     settings.save()
 end
 hostname = settings.get("sprint.hostname")
+if not settings.get("sprint.modem") then
+    local modems = {}
+    peripheral.find("modem", function(name, wrapped)
+        modems[#modems + 1] = name
+        return true
+    end)
+    assert(#modems > 0, "No modems attached!")
+    print("Enter a modem for rednet:")
+    repeat
+        local modemSide = read(nil, nil, function(partial)
+            return require("cc.completion").choice(partial, modems, false)
+        end)
+        rednetModem = modemSide
+    until peripheral.hasType(modemSide, "modem")
+    settings.set("sprint.modem", rednetModem)
+    settings.save()
+end
+rednetModem = settings.get("sprint.modem")
 if not fs.exists(WORKSPACE_CHEST_FN) then
     local l = getList("Enter inventories to use as a workspace:")
     saveList(WORKSPACE_CHEST_FN, l)
@@ -91,8 +106,8 @@ if not fs.exists(OUTPUT_CHEST_FN) then
     saveList(OUTPUT_CHEST_FN, { c })
 end
 local rednetEnabled = false
-if wirelessModem then
-    rednet.open(peripheral.getName(wirelessModem))
+if rednetModem then
+    rednet.open(rednetModem)
     rednet.host(network.PROTOCOL, hostname)
     rednetEnabled = true
 end
