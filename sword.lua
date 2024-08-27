@@ -2,7 +2,7 @@ local sdoc = require("libs.sdoc")
 local mbar = require("libs.mbar")
 local spclib = require("libs.spclib")
 
-local version = "1.1.0"
+local version = "1.1.1"
 local buildVersion = '##VERSION'
 
 local running = true
@@ -411,8 +411,13 @@ local drawStatusBar = true
 local drawStatusBarButton = mbar.toggleButton("Status Bar", function(entry)
     drawStatusBar = entry.value
 end)
+local drawDocumentBorder = true
+local drawDocumentBorderButton = mbar.toggleButton("Doc. Border", function(entry)
+    drawDocumentBorder = entry.value
+end)
 drawStatusBarButton.setValue(true)
 drawRulerButton.setValue(true)
+drawDocumentBorderButton.setValue(true)
 local drawCharInfo = false
 local drawCharInfoButton = mbar.toggleButton("Character Info", function(entry)
     drawCharInfo = entry.value
@@ -435,6 +440,7 @@ local debugViewButton = mbar.button("Debug", nil, debugViewMenu)
 local viewMenu = mbar.buttonMenu({
     drawRulerButton,
     drawStatusBarButton,
+    drawDocumentBorderButton,
     mbar.divider(),
     renderNewlineButton,
     debugViewButton
@@ -521,7 +527,7 @@ local function render()
     local endPage = math.min(startPage + math.ceil(th / PHEIGHT), #document.pages)
     for i = startPage, endPage do
         local y = ((i - 1) * PHEIGHT) + 5 - scrollOffset
-        sdoc.blitOn(blit, i, pageX, y, win)
+        sdoc.blitOn(blit, i, pageX, y, win, drawDocumentBorder)
         if drawRuler then
             local rulerX = math.max(1, pageX - 2)
             for dy = 1, HEIGHT do
