@@ -12,7 +12,7 @@ end) --[[@as Modem?]]
 
 local hostname = "TEST"
 
-local version = "1.0.0"
+local version = "1.0.1"
 local buildVersion = '##VERSION'
 
 local tw, th = term.getSize()
@@ -136,6 +136,33 @@ local function openDocument(fn)
     return
 end
 
+---@param doc Document
+local function printPopup(doc)
+    local toprint, err = printer.convertBlit(doc.blit)
+    if not toprint then
+        mbar.popup("Error", err or "", { "Ok" }, 15)
+        return
+    end
+    local copies = tonumber(mbar.popupRead("Copies?", 15, nil, nil, "1"))
+    if not copies then
+        return
+    end
+    local book = #doc.pages > 1 and mbar.popup("Books?", "Bundle each copy into a book", { "No", "Yes" }, 20) == 2
+    local canPrint, reason = p.canPrint(toprint, copies, book)
+    if not canPrint then
+        mbar.popup("Cannot Print!", reason, { "Ok" }, 15)
+        return
+    end
+    local doPrint = mbar.popupPrint(p.getRequiredInk(toprint, copies), p.getRequiredPaper(toprint, copies, book))
+    if not doPrint then
+        return
+    end
+    local ok, err = p.printDocument(doc.editable.title or "Untitled Document", toprint, copies, book)
+    if not ok then
+        mbar.popup("Error", err or "", { "Ok" }, 15)
+        return
+    end
+end
 local printButton = mbar.button("Print...", function(entry)
     local fn = mbar.popupRead("Open", 15, nil, function(str)
         local list = require("cc.shell.completion").file(shell, str)
@@ -150,15 +177,7 @@ local printButton = mbar.button("Print...", function(entry)
     if fn then
         local s, doc = openDocument(fn)
         if doc then
-            local toprint, err = printer.convertBlit(doc.blit)
-            if toprint then
-                local ok, err = p.printDocument("TEST", toprint, 12, true)
-                if not ok then
-                    mbar.popup("Error", err or "", { "Ok" }, 15)
-                end
-            else
-                mbar.popup("Error", err or "", { "Ok" }, 15)
-            end
+            printPopup(doc)
         end
     end
 end)
@@ -292,7 +311,7 @@ local function handleRednet(id, msg)
             rednet.send(id, { type = "DOCINFO", result = false, reason = err }, network.PROTOCOL)
             return
         end
-        local ink = p.getRequiredInk(toprint)
+        local ink = p.getRequiredInk(toprint, msg.copies)
         local can, reason = p.canPrint(toprint, msg.copies, msg.asBook)
         local paper, string, leather = p.getRequiredPaper(toprint, msg.copies, msg.asBook)
         rednet.send(id,

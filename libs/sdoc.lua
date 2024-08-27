@@ -1,11 +1,11 @@
 local sdoc = {}
-sdoc._VERSION = "1.0.0"
+sdoc._VERSION = "1.1.0"
 
 local ESCAPE_CHAR = "\160"
 
 ---@alias BLIT string[][]
 
-local escapeCharWidth = { c = 3, r = 2, a = 3, p = 2 }
+local escapeCharWidth = { c = 3, r = 2, a = 3, p = 2, t = 34 }
 
 ---@param s string
 ---@return string[] characterMap char[]
@@ -115,6 +115,10 @@ end
 local headerMatch = "^shrekdoc%-v(%d%d)w(%d%d)h(%d%d)m([RS]):"
 local headerExample = "shrekdoc-v01w00h00mR:"
 
+local validVersions = {
+    ["01"] = true,
+    ["02"] = true
+}
 ---@param str string
 ---@return string
 ---@return number w
@@ -122,7 +126,7 @@ local headerExample = "shrekdoc-v01w00h00mR:"
 local function decodeHeader(str)
     local version, w, h, mode = str:match(headerMatch)
     assert(version, "Invalid document (missing header!)")
-    assert(version == "01", ("Unsupported document version v%s"):format(version))
+    assert(validVersions[version], ("Unsupported document version v%s"):format(version))
     w, h = tonumber(w), tonumber(h)
     assert(w and h, "Invalid document dimensions.")
     if mode == "R" then
@@ -141,7 +145,11 @@ local function encode(editable)
     local color = "f"
     local alignment = "l"
     local str = {}
-    str[1] = ("shrekdoc-v01w%02dh%02dmR:"):format(editable.pageWidth, editable.pageHeight)
+    str[1] = ("shrekdoc-v02w%02dh%02dmR:"):format(editable.pageWidth, editable.pageHeight)
+    if editable.title then
+        assert(#editable.title <= 32, "Title is more than 32 characters!")
+        str[2] = ESCAPE_CHAR .. "t" .. ("%-32s"):format(editable.title)
+    end
     for i = 1, #editable.content[1] do
         local fg, bg = editable.content[1]:sub(i, i), editable.content[2]:sub(i, i)
         local line = editable.linestart[i]
@@ -334,6 +342,12 @@ function sdoc.decode(str)
                 doc.editable.pages[idx] = (doc.editable.pages[idx] or 0) + 1
                 -- doc.indexlut[page] = doc.indexlut[page] or {}
                 -- doc.indexlut[page][ln] = doc.indexlut[page][ln] or {}
+            elseif s:sub(1, 1) == "t" then
+                local title = s:sub(2, 33):match("^(.-)%s-$")
+                if title == "" then
+                    error("???")
+                end
+                doc.editable.title = title
             else
                 error(("Invalid escape code %s"):format(s))
             end

@@ -10,7 +10,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ]]
 
-mbar._VERSION = "1.0.0"
+mbar._VERSION = "1.1.0"
 ---@alias menuCallback fun(entry:Button):boolean?
 ---@alias shortcut {[number]:number,button:Button} map from last key to modifiers like {s = {"ctrl"}}
 
@@ -159,6 +159,108 @@ function mbar.box(x, y, w, h)
         local _, _, bgline = getLine(y + h)
         dev.setCursorPos(x - 1, y + h)
         dev.blit("\130", cblit, bgline:sub(x - 1, x - 1))
+    end
+end
+
+local contrastBlitLut = {
+    ["0"] = "f",
+    ["1"] = "f",
+    ["2"] = "f",
+    ["3"] = "f",
+    ["4"] = "f",
+    ["5"] = "f",
+    ["6"] = "f",
+    ["7"] = "0",
+    ["8"] = "f",
+    ["9"] = "f",
+    ["a"] = "f",
+    ["b"] = "f",
+    ["c"] = "0",
+    ["d"] = "0",
+    ["e"] = "f",
+    ["f"] = "0",
+}
+-- 14 wide, 6 tall
+local function drawInkRequirements(x, y, ink)
+    dev.setTextColor(colors.gray)
+    mbar.box(x, y, 12, 4)
+    for i = 0, 15 do
+        local color = 2 ^ i
+        local ch = colors.toBlit(color)
+        local level = ink[ch] or 0
+        local dx = (i % 4) * 3
+        local dy = math.floor(i / 4)
+        dev.setCursorPos(x + dx, y + dy)
+        local s = ("%3d"):format(level)
+        if level > 999 then
+            s = "+++"
+        end
+        dev.blit(s, contrastBlitLut[ch]:rep(3), ch:rep(3))
+    end
+end
+
+---This is specifically made for ShrekPrint & ShrekWord
+---Displays information about the ink consumption of a document
+---and gets confirmation on whether it should be printed
+---@param ink table<string,number>
+---@param paper integer
+---@param string integer
+---@param leather integer
+---@return boolean
+function mbar.popupPrint(ink, paper, string, leather)
+    local w = 14 + 8
+    local h = 6 + 3
+    local tw, th = dev.getSize()
+    local x, y = math.floor((tw - w) / 2), math.floor((th - h) / 2)
+    dev.setTextColor(colors.gray)
+    mbar.corner(x, y, w, h, true)
+    local ofg, obg = color(mfg, mbg)
+    mbar.fill(x, y, w, h)
+    dev.setTextColor(colors.white)
+    dev.setBackgroundColor(colors.gray)
+    mbar.fill(x, y, w, 1)
+    local title = "Print?"
+    local tx = math.floor((tw - #title) / 2)
+    dev.setCursorPos(tx, y)
+    dev.write("Print?")
+    drawInkRequirements(x + 1, y + 2, ink)
+    dev.setTextColor(colors.black)
+    dev.setBackgroundColor(colors.lightGray)
+    dev.setCursorPos(x + 15, y + 2)
+    dev.blit("\130", "8", "0")
+    dev.write((" %3d"):format(paper))
+    dev.setCursorPos(x + 15, y + 4)
+    dev.blit("@", "0", "8")
+    dev.write((" %3d"):format(string))
+    dev.setCursorPos(x + 15, y + 5)
+    -- dev.blit("\132\136", "88", "cc")
+    dev.blit("\164", "c", "8")
+    dev.write((" %3d"):format(leather))
+    local optionX = x + w - 12
+    local optionY = y + h - 2
+    local options = { "No", "Yes" }
+    local optionPos = {}
+    for i, v in ipairs(options) do
+        color(hfg, hbg)
+        dev.setCursorPos(optionX, optionY)
+        dev.write(" " .. v .. " ")
+        color(bg, fg)
+        mbar.corner(optionX, optionY, #v + 2, 1, true)
+        optionPos[i] = optionX
+        optionX = optionX + #v + 3
+    end
+    color(bg, obg)
+    mbar.corner(x, y, w, h, true)
+    color(ofg, obg)
+    while true do
+        local _, _, x, y = os.pullEvent("mouse_click")
+        if y == optionY and x < optionX then
+            for i = #options, 1, -1 do
+                if x >= optionPos[i] then
+                    return i == 2
+                end
+            end
+        end
     end
 end
 

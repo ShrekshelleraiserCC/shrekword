@@ -305,7 +305,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     end
 
     ---Print a given page
-    ---@param name string
+    ---@param name string?
     ---@param page printablePage
     ---@param onlyPage boolean?
     ---@return printID?
@@ -367,14 +367,18 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     end
 
     ---@param document printablePage[]
+    ---@param copies integer
     ---@return table<colChar,integer>
-    local function getRequiredInk(document)
+    local function getRequiredInk(document, copies)
         ---@type table<colChar,integer>
         local requiredColors = {}
         for n, page in pairs(document) do
             for col, _ in pairs(page) do
                 requiredColors[col] = (requiredColors[col] or 0) + 1
             end
+        end
+        for n, c in pairs(requiredColors) do
+            requiredColors[n] = c * copies
         end
         return requiredColors
     end
@@ -431,12 +435,11 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             return false, ("Not enough leather.\nHave %d of %d."):format(leather, copies)
         end
 
-        local requiredColors = getRequiredInk(document)
+        local requiredColors = getRequiredInk(document, copies)
         for col, req in pairs(requiredColors) do
-            local requiredDye = req * copies
             local dye = stockpile.getCount(DYE_ITEMS[col])
-            if requiredDye > dye then
-                return false, ("Not enough %s.\nHave %d of %d."):format(DYE_ITEMS[col], dye, requiredDye)
+            if req > dye then
+                return false, ("Not enough %s.\nHave %d of %d."):format(DYE_ITEMS[col], dye, req)
             end
         end
 
@@ -463,7 +466,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
             end
         end
     end
-    ---@param title string
+    ---@param title string?
     ---@param document printablePage[]
     ---@param bundleStart integer
     ---@param parentBundle printID?
@@ -474,7 +477,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
         local tasks = {}
         for pn, page in ipairs(document) do
             local s = title
-            if bundleStart > 1 or pn ~= 1 then
+            if title and (bundleStart > 1 or pn ~= 1) then
                 s = s .. " " .. bundleStart + pn - 1
             end
             tasks[#tasks + 1] = printPage(s, page)
@@ -530,7 +533,7 @@ function printer.printer(stockpileInvs, workspaceInvs, outputInv, printers)
     end
 
     ---Print a document
-    ---@param title string
+    ---@param title string?
     ---@param document printablePage[]
     ---@param copies integer?
     ---@param book boolean?
