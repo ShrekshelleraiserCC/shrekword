@@ -1,8 +1,18 @@
 local sdoc = require("libs.sdoc")
 local mbar = require("libs.mbar")
 local spclib = require("libs.spclib")
+local supdate = require("libs.supdate")
 
-local version = "1.1.1"
+local updateUrl = "https://github.com/ShrekshelleraiserCC/shrekword/releases/latest/download/sword.lua"
+
+settings.define("sword.checkForUpdates", { type = "boolean", description = "Check for updates on startup" })
+if settings.get("sword.checkForUpdates") == nil then
+    print("Check for updates on startup?")
+    settings.set("sword.checkForUpdates", read():sub(1, 1):lower() == "y")
+    settings.save()
+end
+
+local version = "1.1.2"
 local buildVersion = '##VERSION'
 
 local running = true
@@ -110,14 +120,7 @@ local function newDocument()
     documentFilename = nil
 end
 
-if args[1] then
-    if not openDocument(args[1]) then
-        newDocument()
-    end
-else
-    newDocument()
-end
-
+newDocument()
 local scrollOffset = 1
 local blit = sdoc.render(document, a, b)
 ---@type {state:string,cursor:integer}[]
@@ -306,6 +309,10 @@ local quitButton = mbar.button("Quit", function()
     return true
 end)
 
+local updateButton = mbar.button("Update", function(entry)
+    supdate.checkUpdatePopup(updateUrl, version, buildVersion)
+end)
+
 local filesm = mbar.buttonMenu {
     newButton,
     mbar.divider(),
@@ -315,6 +322,7 @@ local filesm = mbar.buttonMenu {
     saveAsButton,
     mbar.divider(),
     printMenuButton,
+    updateButton,
     quitButton
 }
 
@@ -793,6 +801,13 @@ local function onEvent(e)
 end
 
 local function mainLoop()
+    render()
+    if settings.get("sword.checkForUpdates") then
+        supdate.checkUpdatePopup(updateUrl, version, buildVersion)
+    end
+    if args[1] then
+        openDocument(args[1])
+    end
     while running do
         render()
         local e = { os.pullEvent() }

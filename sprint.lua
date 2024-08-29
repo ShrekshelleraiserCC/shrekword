@@ -3,12 +3,13 @@ local mbar = require("libs.mbar")
 local printer = require("libs.printer")
 local scolors = require("libs.scolors")
 local network = require("libs.sprint_network")
-
+local supdate = require("libs.supdate")
 
 local rednetModem
 local hostname = "TEST"
 
-local version = "1.0.2"
+local updateUrl = "https://github.com/ShrekshelleraiserCC/shrekword/releases/latest/download/sprint.lua"
+local version = "1.0.3"
 local buildVersion = '##VERSION'
 
 local tw, th = term.getSize()
@@ -105,6 +106,14 @@ if not fs.exists(OUTPUT_CHEST_FN) then
     local c = read(nil, nil, chestCompletion)
     saveList(OUTPUT_CHEST_FN, { c })
 end
+
+settings.define("sprint.checkForUpdates", { type = "boolean", description = "Check for updates on startup" })
+if settings.get("sprint.checkForUpdates") == nil then
+    print("Check for updates on startup?")
+    settings.set("sprint.checkForUpdates", read():sub(1, 1):lower() == "y")
+    settings.save()
+end
+
 local rednetEnabled = false
 if rednetModem then
     rednet.open(rednetModem)
@@ -196,7 +205,10 @@ local printButton = mbar.button("Print...", function(entry)
         end
     end
 end)
-local fileMenu = mbar.buttonMenu { printButton, quitButton }
+local updateButton = mbar.button("Update", function(entry)
+    supdate.checkUpdatePopup(updateUrl, version, buildVersion)
+end)
+local fileMenu = mbar.buttonMenu { printButton, updateButton, quitButton }
 local fileButton = mbar.button("File", nil, fileMenu)
 local aboutButton = mbar.button("About", function(entry)
     local s = ("ShrekPrint v%s\nMbar v%s\nSdoc v%s"):format(version, mbar._VERSION, sdoc._VERSION)
@@ -374,6 +386,10 @@ end
 
 parallel.waitForAny(
     function()
+        render()
+        if settings.get("sprint.checkForUpdates") then
+            supdate.checkUpdatePopup(updateUrl, version, buildVersion)
+        end
         while running do
             render()
             local e = { os.pullEvent() }
