@@ -158,6 +158,9 @@ local saveAsButton = mbar.button("Save As", function(entry)
     local fn = mbar.popupRead("Save As", 15)
     bar.resetKeys()
     if fn then
+        if fn:sub(-5) ~= ".sdoc" then
+            fn = fn .. ".sdoc"
+        end
         saveAs(fn)
         documentFilename = fn
     end
