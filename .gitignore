@@ -10,3 +10,4 @@ build/sview.lua
 *.log
 .settings
 *.chests
+.swordunsheathed
