@@ -124,6 +124,11 @@ local validVersions = {
 ---@return number w
 ---@return number h
 local function decodeHeader(str)
+    local count,hasShebang
+    str,count = str:gsub("^#!.-\n","") -- Remove the shebang from the beginning of the file
+    if count > 0 then
+        hasShebang = true
+    end
     local version, w, h, mode = str:match(headerMatch)
     assert(version, "Invalid document (missing header!)")
     assert(validVersions[version], ("Unsupported document version v%s"):format(version))
@@ -136,7 +141,7 @@ local function decodeHeader(str)
         assert(type(s) == "string", "Invalid serialized document.")
         str = s
     end
-    return str, w, h
+    return str, w, h,hasShebang
 end
 
 ---@param editable EditableDocument
@@ -295,7 +300,7 @@ end
 ---@param str string
 ---@return Document
 function sdoc.decode(str)
-    local str, w, h = decodeHeader(str)
+    local str, w, h, hasShebang = decodeHeader(str)
     local s, m = sdoc.wrapString(str, w)
     ---@class Document
     local doc = {
@@ -429,7 +434,7 @@ function sdoc.decode(str)
 
     doc.blit = sdoc.render(doc)
 
-    return setmetatable(doc, docmeta)
+    return setmetatable(doc, docmeta),hasShebang
 end
 
 ---@param doc Document
